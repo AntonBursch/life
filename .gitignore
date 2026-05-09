@@ -1,0 +1,28 @@
+# Build artifacts
+target/
+**/target/
+*.rs.bk
+Cargo.lock
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+
+# wasm-pack output
+pkg/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Env / secrets
+.env
+.env.*
+!.env.example
