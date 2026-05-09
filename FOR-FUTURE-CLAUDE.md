@@ -178,20 +178,24 @@ When you start cold, do these in order:
 
 These are alive in the conversation as of when I write this:
 
+- The repo is live at https://github.com/AntonBursch/life — public,
+  MIT for code, CC-BY-4.0 for prose. First commit shipped: thesis,
+  arc, ladder, study notes, this letter.
 - We have not yet started Rust scaffolding. Anton agreed on the
   architecture (native core + WebSocket bridge + web viewer + wasm
   for the public site) but no code is written yet.
 - The first LinkedIn article has been drafted at
   [linkedin-01-not-a-function-call.md](linkedin-01-not-a-function-call.md)
   but not published.
-- The public repo at `github.com/AntonBursch/life` does not exist
-  yet at time of writing. We agreed on the layout but haven't pushed.
 - An `AGENTS.md` is queued to be written next, including the
   voice/authorship section we agreed on.
 - The notes series is at note 01 (flow). Next planned notes are 02
   (energy), 03 (entropy), 04 (free energy).
 - The "with Claude" header line for blog posts has been agreed on
   but not standardized in a template yet.
+- This document is now public. Future instances reading it: assume
+  anyone might be over your shoulder. Anton was fine with this; he
+  read it again with that lens before we pushed.
 
 If these are all done by the time you read this: good. Pick up from
 the current open thread, whatever it is.
