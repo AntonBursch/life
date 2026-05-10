@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R1 — Pure 1D diffusion · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R1 — Pure 1D diffusion</h1>
+        <p class="muted">
+            Drop a unit pulse in the middle of a closed box. Let it diffuse.
+            Nothing else.
+        </p>
+
+        <div class="canvas-wrap">
+            <canvas id="field" style="height: 220px"></canvas>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reset">↺ Reset</button>
+            <button id="step">→ Step</button>
+        </div>
+
+        <div class="controls">
+            <label for="speed">steps / frame</label>
+            <input
+                id="speed"
+                type="range"
+                min="0"
+                max="100"
+                value="4"
+                step="1"
+            />
+            <span id="speedV" class="value">4</span>
+
+            <label for="diff">diffusivity D</label>
+            <input
+                id="diff"
+                type="range"
+                min="0.01"
+                max="0.5"
+                value="0.5"
+                step="0.01"
+            />
+            <span id="diffV" class="value">0.50</span>
+        </div>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">time</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">steps</span> <span class="v" id="rS">0</span></div>
+            <div>
+                <span class="k">total</span>
+                <span class="v" id="rTot">0</span>
+                <span class="muted">(should be ≈ 1)</span>
+            </div>
+            <div>
+                <span class="k">σ (rms spread)</span>
+                <span class="v" id="rSig">0</span>
+            </div>
+            <div>
+                <span class="k">σ predicted</span>
+                <span class="v" id="rSigPred">0</span>
+                <span class="muted">= √(2 D t)</span>
+            </div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            A gradient discharges itself by diffusion alone, and the spread
+            grows like <code>√t</code>. Once the gradient is flat, nothing
+            further happens.
+        </p>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>Total mass holds at ~1.0.</strong> Zero-flux walls let
+                nothing leave the box. Drift means a numerical bug.
+            </li>
+            <li>
+                <strong>σ tracks <code>√(2 D t)</code>.</strong> The two
+                readouts above should stay close as the field spreads, until
+                the pulse touches the walls and reflects.
+            </li>
+            <li>
+                <strong>Quadrupling the time only doubles the spread.</strong>
+                Diffusion is a great way to move things short distances and a
+                terrible way to move things long distances. This is why your
+                cells are small.
+            </li>
+        </ul>
+
+        <p class="muted">
+            Math + code for this rung is in
+            <a href="../notes/01-flow.md">notes/01-flow.md</a>.
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>
