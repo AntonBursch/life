@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R5 — Bénard convection · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r04-grayscott/">← R4</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R5 — Bénard convection</h1>
+        <p class="muted">
+            A box of fluid is heated at the bottom and cooled at the
+            top. Below a threshold of heating, the heat just conducts
+            through and the fluid stays still. Above the threshold,
+            the fluid spontaneously organises into rolling cells that
+            move heat much faster than conduction could. The
+            structured state is <em>better</em> at dissipating than
+            the unstructured one.
+        </p>
+
+        <div class="canvas-wrap">
+            <canvas
+                id="field"
+                style="
+                    height: 220px;
+                    aspect-ratio: 4 / 1;
+                "
+            ></canvas>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reset">↺ Reset to conduction</button>
+        </div>
+
+        <div class="btnrow">
+            <button data-preset="off">no heat (g=0)</button>
+            <button data-preset="below">below threshold</button>
+            <button data-preset="onset">near onset</button>
+            <button data-preset="cells">convection cells</button>
+            <button data-preset="rolling">rolling boil</button>
+        </div>
+
+        <div class="controls">
+            <label for="speed">steps / frame</label>
+            <input
+                id="speed"
+                type="range"
+                min="0"
+                max="40"
+                value="12"
+                step="1"
+            />
+            <span id="speedV" class="value">12</span>
+
+            <label for="gravity">heating (g)</label>
+            <input
+                id="gravity"
+                type="range"
+                min="0"
+                max="0.08"
+                value="0.03"
+                step="0.0005"
+            />
+            <span id="gravityV" class="value">0.0300</span>
+        </div>
+
+        <p class="muted">
+            The slider is effectively a Rayleigh-number knob. The
+            critical value for this geometry sits around g ≈ 0.01.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">time</span> <span class="v" id="rT">0</span></div>
+            <div>
+                <span class="k">Nusselt Nu</span>
+                <span class="v" id="rNu">1.000</span>
+            </div>
+            <div>
+                <span class="k">⟨ω²⟩ (flow energy)</span>
+                <span class="v" id="rEnergy">0</span>
+            </div>
+            <div>
+                <span class="k">|ψ|max</span>
+                <span class="v" id="rPsi">0</span>
+            </div>
+            <div>
+                <span class="k">regime</span>
+                <span class="v" id="rRegime">conduction</span>
+            </div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            Below a critical amount of heating, this box does exactly
+            what R1 promised: heat flows by diffusion, evenly, and the
+            fluid never moves. Push the heating just past the
+            threshold and something new happens. The fluid <em>organises
+            itself</em> into rolling cells, and the heat now rides the
+            cells through the box. The Nusselt number — the ratio of
+            actual heat throughput to pure-conduction throughput —
+            jumps from 1 to several. The structured state moves more
+            heat than the boring state.
+        </p>
+        <p>
+            This is the first rung where pattern exists <em>because</em>
+            it dissipates. The convection cells aren't sitting on top
+            of the flow; they are the flow's way of doing its job
+            faster. Patterns that out-dissipate the unstructured state
+            are favoured. That's a seed of selection pressure with no
+            genes and no chemistry, just hydrodynamics.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Start with no heat.</strong> Click
+                <code>no heat (g=0)</code>. The temperature settles
+                into a smooth gradient from red at the bottom to blue
+                at the top. Nu sits at 1.000. Nothing moves.
+            </li>
+            <li>
+                <strong>Below threshold.</strong> Click
+                <code>below threshold</code>. The box looks identical.
+                Heating is on, but conduction handles it. Nu still
+                ≈ 1. The system is being driven but has not organised.
+            </li>
+            <li>
+                <strong>Near onset.</strong> Click <code>near onset</code>.
+                Watch carefully — over a long time the perfectly flat
+                gradient develops a faint wobble. The system is poised.
+                Tiny perturbations refuse to die. Nu creeps above 1.
+            </li>
+            <li>
+                <strong>Convection cells.</strong> Click
+                <code>convection cells</code>. Now you can see them:
+                hot plumes rising, cold plumes sinking, repeating along
+                the box. Nu has jumped above 2 or 3. The structured
+                state is moving real heat.
+            </li>
+            <li>
+                <strong>Rolling boil.</strong> Click <code>rolling boil</code>.
+                The cells become unstable, merge, split, drift. Nu can
+                reach 5 or 6. The pattern is irregular but the
+                throughput is high.
+            </li>
+            <li>
+                <strong>Slide the heating slowly across the
+                threshold.</strong> Watch Nu. It does not creep — it
+                <em>jumps</em>. That jump is the rung. Below it, the
+                box has no pattern. Above it, the box has one and
+                works harder.
+            </li>
+        </ol>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>Below threshold the box is dead.</strong>
+                Conduction is enough; the fluid has no reason to move.
+                You can put energy in all day and you will not get
+                structure out.
+            </li>
+            <li>
+                <strong>Threshold is sharp.</strong> Nu sits at 1.0
+                until very close to onset, then jumps. The transition
+                is qualitative, not gradual. A small change in input
+                produces a categorical change in output.
+            </li>
+            <li>
+                <strong>The structured state out-transports the
+                unstructured one.</strong> Same temperature difference
+                top to bottom, more heat moving. The pattern is
+                <em>useful</em> to the flow. This is the first rung
+                where the universe has any reason to prefer pattern
+                to no-pattern.
+            </li>
+        </ul>
+
+        <h2>why this rung matters</h2>
+        <p>
+            R4 made patterns. R5 makes patterns that <em>earn their
+            keep.</em> Above threshold, the convecting state dissipates
+            the temperature gradient faster than the conducting state
+            could. Out of two possible regimes, the universe lands on
+            the one that processes the imposed flow more thoroughly.
+        </p>
+        <p>
+            This is selection without genes. No replicator, no
+            memory, no copying — just a sharp boundary where the
+            patterned state wins, every time, because it does the job
+            of being a system better than the unpatterned state. Every
+            rung above this one will reuse the move: when you push a
+            substrate hard enough, it doesn't just respond — it
+            reorganises into whatever pattern dissipates the push
+            fastest. Living things are the most extreme example. They
+            are also the most extreme dissipators.
+        </p>
+
+        <p class="muted">
+            Math + code in
+            <a href="../notes/01-flow.md">notes/01-flow.md</a>.
+            Next rung: a pattern that not only dissipates but
+            actively <em>pumps</em> a gradient against itself, by
+            spending a different gradient. The first machine.
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

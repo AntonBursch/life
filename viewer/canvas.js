@@ -95,3 +95,60 @@ export function drawField2D(ctx, w, h, field, gw, gh, vmax) {
     ctx.clearRect(0, 0, w, h);
     ctx.drawImage(ctx._backing, 0, 0, w, h);
 }
+
+/**
+ * Draw a 2D temperature field with a blue (cold) -> red (hot) ramp.
+ * Field values are expected in [0, 1] (0 = cold, 1 = hot).
+ *
+ * The field is rendered with row 0 at the BOTTOM of the canvas, so that
+ * "hot at the bottom" reads correctly visually for Bénard-style convection.
+ */
+export function drawField2DTemperature(ctx, w, h, field, gw, gh) {
+    if (!field.length) {
+        ctx.clearRect(0, 0, w, h);
+        return;
+    }
+    if (!ctx._tbacking || ctx._tbacking.width !== gw || ctx._tbacking.height !== gh) {
+        const off = document.createElement("canvas");
+        off.width = gw;
+        off.height = gh;
+        ctx._tbacking = off;
+        ctx._tbackingCtx = off.getContext("2d");
+        ctx._tbackingImg = ctx._tbackingCtx.createImageData(gw, gh);
+    }
+    const img = ctx._tbackingImg;
+    const data = img.data;
+    // Render with row 0 at bottom: input row j -> image row (gh-1-j).
+    for (let j = 0; j < gh; j++) {
+        const srcRow = j * gw;
+        const dstRow = (gh - 1 - j) * gw;
+        for (let i = 0; i < gw; i++) {
+            let t = field[srcRow + i];
+            if (t < 0) t = 0;
+            else if (t > 1) t = 1;
+            // Diverging cool/warm: deep blue at 0, white near 0.5, deep red at 1.
+            // Two-piece linear ramp through near-white.
+            let r, g, b;
+            if (t < 0.5) {
+                const s = t * 2.0;            // 0..1
+                r = Math.round(35 + s * 220);
+                g = Math.round(60 + s * 195);
+                b = Math.round(170 + s * 85);
+            } else {
+                const s = (t - 0.5) * 2.0;    // 0..1
+                r = Math.round(255);
+                g = Math.round(255 - s * 200);
+                b = Math.round(255 - s * 240);
+            }
+            const o = (dstRow + i) * 4;
+            data[o] = r;
+            data[o + 1] = g;
+            data[o + 2] = b;
+            data[o + 3] = 255;
+        }
+    }
+    ctx._tbackingCtx.putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(ctx._tbacking, 0, 0, w, h);
+}

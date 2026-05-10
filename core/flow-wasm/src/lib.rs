@@ -4,7 +4,7 @@
 //! JS/Rust interop and exposes the diffusion field in a form a Canvas
 //! renderer can consume cheaply.
 
-use flow::{AdvectionDiffusion1D, BoundaryCondition, Diffusion1D, GrayScott2D};
+use flow::{AdvectionDiffusion1D, BoundaryCondition, Convection2D, Diffusion1D, GrayScott2D};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -339,5 +339,93 @@ impl WasmGrayScott2D {
     /// RGBA bitmap every frame.
     pub fn v_field(&self) -> Vec<f64> {
         self.inner.v().to_vec()
+    }
+}
+
+/// R5 — 2D Boussinesq thermal convection. A box of fluid heated below.
+/// Below threshold: pure conduction, Nu = 1. Above: convection cells, Nu > 1.
+#[wasm_bindgen]
+pub struct WasmConvection2D {
+    inner: Convection2D,
+}
+
+#[wasm_bindgen]
+impl WasmConvection2D {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        kappa: f64,
+        nu: f64,
+        gravity: f64,
+        dx: f64,
+        dt: f64,
+    ) -> Result<WasmConvection2D, JsError> {
+        let inner = Convection2D::new(width, height, kappa, nu, gravity, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    pub fn step(&mut self) {
+        self.inner.step();
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n {
+            self.inner.step();
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.inner.reset();
+    }
+
+    pub fn set_gravity(&mut self, g: f64) {
+        self.inner.set_gravity(g);
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize {
+        self.inner.width()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize {
+        self.inner.height()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn time(&self) -> f64 {
+        self.inner.time()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn gravity(&self) -> f64 {
+        self.inner.gravity()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn nusselt(&self) -> f64 {
+        self.inner.nusselt()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn mean_sq_vorticity(&self) -> f64 {
+        self.inner.mean_sq_vorticity()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn max_abs_psi(&self) -> f64 {
+        self.inner.max_abs_psi()
+    }
+
+    /// Temperature field, row-major, length = width * height.
+    pub fn temperature_field(&self) -> Vec<f64> {
+        self.inner.temperature().to_vec()
+    }
+
+    /// Streamfunction field, for drawing flow contours.
+    pub fn psi_field(&self) -> Vec<f64> {
+        self.inner.streamfunction().to_vec()
     }
 }

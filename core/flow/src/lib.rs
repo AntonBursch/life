@@ -7,9 +7,11 @@
 //! See `notes/01-flow.md` for the math behind R1.
 
 pub mod advection;
+pub mod convection;
 pub mod diffusion;
 pub mod gray_scott;
 
 pub use advection::AdvectionDiffusion1D;
+pub use convection::Convection2D;
 pub use diffusion::{Diffusion1D, BoundaryCondition};
 pub use gray_scott::GrayScott2D;
