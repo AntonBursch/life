@@ -4,7 +4,7 @@
 //! JS/Rust interop and exposes the diffusion field in a form a Canvas
 //! renderer can consume cheaply.
 
-use flow::{AdvectionDiffusion1D, BoundaryCondition, Diffusion1D};
+use flow::{AdvectionDiffusion1D, BoundaryCondition, Diffusion1D, GrayScott2D};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -240,5 +240,104 @@ impl WasmAdvectionDiffusion1D {
 
     pub fn phi(&self) -> Vec<f64> {
         self.inner.phi().to_vec()
+    }
+}
+
+
+/// R4 — 2D Gray-Scott reaction-diffusion. Two coupled fields with a fresh
+/// feed of U and a sink for V. Above the relax-to-soup boundary, the box
+/// spontaneously organises into spots, stripes, or spirals.
+#[wasm_bindgen]
+pub struct WasmGrayScott2D {
+    inner: GrayScott2D,
+}
+
+#[wasm_bindgen]
+impl WasmGrayScott2D {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        du: f64,
+        dv: f64,
+        feed: f64,
+        kill: f64,
+        dx: f64,
+        dt: f64,
+    ) -> Result<WasmGrayScott2D, JsError> {
+        let inner = GrayScott2D::new(width, height, du, dv, feed, kill, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    pub fn step(&mut self) {
+        self.inner.step();
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        self.inner.step_many(n as u64);
+    }
+
+    pub fn reset(&mut self) {
+        self.inner.reset();
+    }
+
+    pub fn seed_blob(&mut self, cx: usize, cy: usize, r: usize) {
+        self.inner.seed_blob(cx, cy, r);
+    }
+
+    /// Live tuning hooks — the viewer slides F and k while running.
+    pub fn set_feed(&mut self, feed: f64) {
+        self.inner.set_feed(feed);
+    }
+
+    pub fn set_kill(&mut self, kill: f64) {
+        self.inner.set_kill(kill);
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize {
+        self.inner.width()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize {
+        self.inner.height()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn time(&self) -> f64 {
+        self.inner.time()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn feed(&self) -> f64 {
+        self.inner.feed()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn kill(&self) -> f64 {
+        self.inner.kill()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn mean_v(&self) -> f64 {
+        self.inner.mean_v()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn max_v(&self) -> f64 {
+        self.inner.max_v()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn var_v(&self) -> f64 {
+        self.inner.var_v()
+    }
+
+    /// Copy the V field into a `Float64Array`. The viewer maps this onto an
+    /// RGBA bitmap every frame.
+    pub fn v_field(&self) -> Vec<f64> {
+        self.inner.v().to_vec()
     }
 }

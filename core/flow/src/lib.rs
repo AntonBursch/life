@@ -8,6 +8,8 @@
 
 pub mod advection;
 pub mod diffusion;
+pub mod gray_scott;
 
 pub use advection::AdvectionDiffusion1D;
 pub use diffusion::{Diffusion1D, BoundaryCondition};
+pub use gray_scott::GrayScott2D;

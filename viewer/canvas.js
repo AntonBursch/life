@@ -51,3 +51,47 @@ export function drawField1D(ctx, w, h, field, vmax) {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 }
+
+/**
+ * Draw a 2D scalar field onto the canvas. The field is `gw × gh` cells and
+ * is rendered onto a backing canvas of that size with a colormap, then
+ * scaled up to the visible canvas with nearest-neighbour interpolation.
+ *
+ * `vmax` is the upper end of the colour scale. Values >= vmax saturate to
+ * the high end of the map; values <= 0 saturate to the low end.
+ */
+export function drawField2D(ctx, w, h, field, gw, gh, vmax) {
+    if (!field.length) {
+        ctx.clearRect(0, 0, w, h);
+        return;
+    }
+    if (!ctx._backing || ctx._backing.width !== gw || ctx._backing.height !== gh) {
+        const off = document.createElement("canvas");
+        off.width = gw;
+        off.height = gh;
+        ctx._backing = off;
+        ctx._backingCtx = off.getContext("2d");
+        ctx._backingImg = ctx._backingCtx.createImageData(gw, gh);
+    }
+    const img = ctx._backingImg;
+    const data = img.data;
+    const safeMax = vmax > 0 ? vmax : 1;
+    for (let i = 0; i < field.length; i++) {
+        let t = field[i] / safeMax;
+        if (t < 0) t = 0;
+        else if (t > 1) t = 1;
+        // Magma-ish ramp: black -> purple -> red -> orange -> yellow.
+        const r = Math.round(255 * Math.min(1, t * 2.2));
+        const g = Math.round(255 * Math.max(0, t * 1.6 - 0.5));
+        const b = Math.round(255 * Math.max(0, Math.min(1, t * 2.4) - t * t * 1.8));
+        const o = i * 4;
+        data[o] = r;
+        data[o + 1] = g;
+        data[o + 2] = b;
+        data[o + 3] = 255;
+    }
+    ctx._backingCtx.putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(ctx._backing, 0, 0, w, h);
+}

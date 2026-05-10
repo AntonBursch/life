@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R4 — Gray-Scott · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r03-advection/">← R3</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R4 — Gray-Scott reaction-diffusion</h1>
+        <p class="muted">
+            Two chemicals in a square. One is constantly fed in, one is
+            constantly removed, and they react. Under most settings
+            you get soup. Under the right settings the box makes a
+            <em>pattern</em>. This is the first rung where the
+            universe organises itself.
+        </p>
+
+        <div class="canvas-wrap">
+            <canvas
+                id="field"
+                style="
+                    height: 360px;
+                    aspect-ratio: 1 / 1;
+                    cursor: crosshair;
+                "
+            ></canvas>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reset">↺ Reset to soup</button>
+            <button id="seed">✦ Seed centre</button>
+        </div>
+
+        <div class="btnrow">
+            <button data-preset="coral">coral</button>
+            <button data-preset="spots">spots</button>
+            <button data-preset="maze">maze</button>
+            <button data-preset="uskate">U-skate</button>
+            <button data-preset="soup">soup (decays)</button>
+        </div>
+
+        <div class="controls">
+            <label for="speed">steps / frame</label>
+            <input
+                id="speed"
+                type="range"
+                min="0"
+                max="40"
+                value="10"
+                step="1"
+            />
+            <span id="speedV" class="value">10</span>
+
+            <label for="feed">feed F</label>
+            <input
+                id="feed"
+                type="range"
+                min="0.005"
+                max="0.080"
+                value="0.0545"
+                step="0.0005"
+            />
+            <span id="feedV" class="value">0.0545</span>
+
+            <label for="kill">kill k</label>
+            <input
+                id="kill"
+                type="range"
+                min="0.030"
+                max="0.075"
+                value="0.062"
+                step="0.0005"
+            />
+            <span id="killV" class="value">0.0620</span>
+        </div>
+
+        <p class="muted">
+            Click anywhere on the canvas to drop a fresh seed there.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">time</span> <span class="v" id="rT">0</span></div>
+            <div>
+                <span class="k">mean V</span>
+                <span class="v" id="rMean">0</span>
+            </div>
+            <div>
+                <span class="k">max V</span>
+                <span class="v" id="rMax">0</span>
+            </div>
+            <div>
+                <span class="k">variance V</span>
+                <span class="v" id="rVar">0</span>
+            </div>
+            <div>
+                <span class="k">regime guess</span>
+                <span class="v" id="rRegime">—</span>
+            </div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            A box of two reacting chemicals with a steady feed of fuel
+            and a steady removal of product does not relax to a uniform
+            soup. Under the right ratio of feed to kill it
+            <em>organises</em>. Spots replicate, stripes wander, spirals
+            unwind. The universe has just done something it could not
+            do at R1 or R2 or R3: it made a structure with no help.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Start from coral.</strong> Hit <code>↺ Reset</code>
+                then <code>✦ Seed centre</code>. Watch the V field grow
+                outward in coral-like dendrites until they fill the
+                box. The box never settles. It is permanently busy.
+            </li>
+            <li>
+                <strong>Switch to spots.</strong> Reset, seed. After a
+                while you will see V form discrete blobs that pinch and
+                divide. Each blob is a steady "thing" that uses fuel,
+                makes product, and persists.
+            </li>
+            <li>
+                <strong>Switch to maze.</strong> Reset, seed. The field
+                forms slow, ropy stripes that thicken and split.
+                Stripe-world is much slower than spot-world.
+            </li>
+            <li>
+                <strong>Click the canvas in spot-world.</strong> Each
+                click drops a fresh seed. Watch new spots emerge from
+                the seeds and start dividing on their own.
+            </li>
+            <li>
+                <strong>Slide F or k slowly while a pattern is
+                running.</strong> Cross a boundary and watch the
+                pattern break or freeze. Most parameter pairs produce
+                soup. Only a thin slice of the F-k plane produces
+                anything interesting. Life lives in that slice.
+            </li>
+            <li>
+                <strong>Switch to soup.</strong> No matter what you do,
+                V decays to zero. The reaction loses to the kill rate.
+                Most boxes in the universe look like this.
+            </li>
+        </ol>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>The pattern is not a still photograph.</strong>
+                It looks stable but every spot or stripe is being
+                consumed and refreshed every step. Stop the simulation
+                and the picture freezes, but only because we stopped
+                evaluating it; in a real system, stopping the feed
+                <em>dissolves the pattern</em>.
+            </li>
+            <li>
+                <strong>The boundary between regimes is sharp.</strong>
+                A 0.001 shift in F or k can flip the box from "alive"
+                to "dead." Life is not robust to its own parameters
+                without something else helping it stay in the right
+                window. That something else is what later rungs build.
+            </li>
+            <li>
+                <strong>Spots divide.</strong> A spot grows, elongates,
+                pinches in the middle, splits. Two spots where one was.
+                This is not biology. It is chemistry plus geometry.
+                Biology will reuse this trick.
+            </li>
+        </ul>
+
+        <h2>why this rung matters</h2>
+        <p>
+            R1 told us closed systems flatten. R2 said a held gradient
+            sustains a current. R3 said the medium can carry stuff
+            faster than diffusion alone. R4 is the first rung where
+            the system uses its flow to <em>make a shape</em>. The
+            shape is not put in by hand. It emerges. It is also
+            entirely conditional on the flow continuing — turn off the
+            feed and the spots vanish.
+        </p>
+        <p>
+            This is the picture every living thing inherits: a pattern
+            held in shape by a flow that does not stop. The pattern
+            isn't substance. It is a process. Cut the supply and there
+            is no smaller pattern, no still pattern; there is just
+            absence.
+        </p>
+
+        <p class="muted">
+            Math + code in
+            <a href="../notes/01-flow.md">notes/01-flow.md</a>.
+            Next rung: a pattern that uses its own flow to
+            <em>out-dissipate</em> the unstructured state.
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>
