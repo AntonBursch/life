@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R2 — Driven diffusion · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r01-diffusion/">← R1</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R2 — Driven diffusion</h1>
+        <p class="muted">
+            Same box, same equation as R1. But this time the left wall is
+            held hot and the right wall is held cold. The field can never
+            flatten, because the flatness is being prevented.
+        </p>
+
+        <div class="canvas-wrap">
+            <canvas id="field" style="height: 220px"></canvas>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reset">↺ Reset interior</button>
+            <button id="step">→ Step</button>
+        </div>
+
+        <div class="controls">
+            <label for="speed">steps / frame</label>
+            <input
+                id="speed"
+                type="range"
+                min="0"
+                max="200"
+                value="20"
+                step="1"
+            />
+            <span id="speedV" class="value">20</span>
+
+            <label for="diff">diffusivity D</label>
+            <input
+                id="diff"
+                type="range"
+                min="0.01"
+                max="0.5"
+                value="0.5"
+                step="0.01"
+            />
+            <span id="diffV" class="value">0.50</span>
+
+            <label for="left">left value</label>
+            <input
+                id="left"
+                type="range"
+                min="0"
+                max="1"
+                value="1.0"
+                step="0.01"
+            />
+            <span id="leftV" class="value">1.00</span>
+
+            <label for="right">right value</label>
+            <input
+                id="right"
+                type="range"
+                min="0"
+                max="1"
+                value="0.0"
+                step="0.01"
+            />
+            <span id="rightV" class="value">0.00</span>
+        </div>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">time</span> <span class="v" id="rT">0</span></div>
+            <div>
+                <span class="k">flux at left wall</span>
+                <span class="v" id="rJL">0</span>
+            </div>
+            <div>
+                <span class="k">flux at right wall</span>
+                <span class="v" id="rJR">0</span>
+            </div>
+            <div>
+                <span class="k">ratio (right / left)</span>
+                <span class="v" id="rJRatio">—</span>
+                <span class="muted">→ 1.000 at steady state</span>
+            </div>
+            <div>
+                <span class="k">flux predicted</span>
+                <span class="v" id="rJPred">0</span>
+                <span class="muted">= D · (left − right) / L</span>
+            </div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            A continuous source at one end and a continuous sink at the
+            other produces a <em>steady non-equilibrium state</em>: a
+            gradient that does not flatten, because flow is being
+            maintained. The field stops changing while energy keeps moving
+            through it.
+        </p>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>The shape settles to a straight line.</strong> The
+                analytic steady state is
+                <code>φ(x) = left + (right − left) · x / L</code>. Nothing
+                fancier than that.
+            </li>
+            <li>
+                <strong>The field stops moving</strong> — but flow doesn’t.
+                Watch the two flux readings converge to the same non-zero
+                number. <em>In = out, but neither is zero.</em>
+            </li>
+            <li>
+                <strong>Move a slider</strong> and the field re-settles.
+                Steady state is a balance, not a destination.
+            </li>
+        </ul>
+
+        <h2>why this rung matters</h2>
+        <p>
+            Equilibrium and steady state look alike from outside — both
+            stop moving. They are <em>not</em> the same. An equilibrium
+            costs nothing to maintain. A steady state costs whatever the
+            through-flow is, every second, forever. Every living thing is
+            a steady state. The category is not optional.
+        </p>
+
+        <p class="muted">
+            Math + code in
+            <a href="../notes/01-flow.md">notes/01-flow.md</a>.
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>
