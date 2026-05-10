@@ -4,6 +4,7 @@ members = [
     "flow",
     "r01-diffusion",
     "r02-driven",
+    "r03-advection",
     "server",
     "flow-wasm",
 ]

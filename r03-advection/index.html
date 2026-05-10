@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R3 — Advection-diffusion · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r02-driven/">← R2</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R3 — Advection-diffusion</h1>
+        <p class="muted">
+            R2 again, but this time the medium itself is moving. The same
+            box, the same held endpoints, plus a wind. Two terms now
+            compete to set the shape of the field.
+        </p>
+
+        <div class="canvas-wrap">
+            <canvas id="field" style="height: 220px"></canvas>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reset">↺ Reset interior</button>
+            <button id="step">→ Step</button>
+        </div>
+
+        <div class="controls">
+            <label for="speed">steps / frame</label>
+            <input
+                id="speed"
+                type="range"
+                min="0"
+                max="200"
+                value="40"
+                step="1"
+            />
+            <span id="speedV" class="value">40</span>
+
+            <label for="diff">diffusivity D</label>
+            <input
+                id="diff"
+                type="range"
+                min="0.005"
+                max="0.5"
+                value="0.2"
+                step="0.005"
+            />
+            <span id="diffV" class="value">0.20</span>
+
+            <label for="vel">velocity v (wind)</label>
+            <input
+                id="vel"
+                type="range"
+                min="-0.4"
+                max="0.4"
+                value="0.0"
+                step="0.005"
+            />
+            <span id="velV" class="value">0.000</span>
+
+            <label for="left">left value</label>
+            <input
+                id="left"
+                type="range"
+                min="0"
+                max="1"
+                value="1.0"
+                step="0.01"
+            />
+            <span id="leftV" class="value">1.00</span>
+
+            <label for="right">right value</label>
+            <input
+                id="right"
+                type="range"
+                min="0"
+                max="1"
+                value="0.0"
+                step="0.01"
+            />
+            <span id="rightV" class="value">0.00</span>
+        </div>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">time</span> <span class="v" id="rT">0</span></div>
+            <div>
+                <span class="k">Péclet (v·L/D)</span>
+                <span class="v" id="rPe">0</span>
+            </div>
+            <div>
+                <span class="k">regime</span>
+                <span class="v" id="rRegime">—</span>
+            </div>
+            <div>
+                <span class="k">flux at left face</span>
+                <span class="v" id="rJL">0</span>
+            </div>
+            <div>
+                <span class="k">flux at right face</span>
+                <span class="v" id="rJR">0</span>
+            </div>
+            <div>
+                <span class="k">ratio (right / left)</span>
+                <span class="v" id="rJRatio">—</span>
+            </div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            Add a wind, and the same gradient now drifts as well as
+            spreads. The shape of "flow" depends on which mechanism
+            dominates — diffusion smooths, advection drifts. The Péclet
+            number <code>Pe = v · L / D</code> is the dimensionless
+            knob that says which one wins.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Start with v = 0</strong> (slider in the middle).
+                You get R2 back: a straight line from <code>left</code>
+                down to <code>right</code>. Pe = 0.
+            </li>
+            <li>
+                <strong>Nudge v just above 0.</strong> The line tilts
+                slightly — more of the box stays near the inflow value,
+                less near the outflow. The wind is pushing the inflow
+                value in.
+            </li>
+            <li>
+                <strong>Push v further (say 0.2 with D = 0.05).</strong>
+                Pe ≈ 800. The field now sits at <code>left</code> for
+                almost the entire box and crashes to <code>right</code>
+                in a thin layer at the outflow wall. Diffusion has
+                effectively been outrun.
+            </li>
+            <li>
+                <strong>Reverse the wind</strong> (v &lt; 0). The
+                "inflow" is now the right wall. The same shape mirrors.
+            </li>
+            <li>
+                <strong>Crank D up while v is high.</strong> The field
+                relaxes back toward the linear R2 profile. Diffusion is
+                catching up.
+            </li>
+        </ol>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>Two regimes, one knob.</strong> At <code>|Pe|
+                ≪ 1</code> the steady state looks linear (R2). At
+                <code>|Pe| ≫ 1</code> the field clings to the inflow
+                value across most of the box and falls in a boundary
+                layer near the outflow.
+            </li>
+            <li>
+                <strong>Total flux still in = out.</strong> The two
+                readouts are now <code>v · φ − D · ∂φ/∂x</code> at each
+                wall: convective plus diffusive. Their sum is what stays
+                constant at steady state, even though the diffusive part
+                alone may not.
+            </li>
+            <li>
+                <strong>Mass through-flow scales with v.</strong> Double
+                the wind, double the throughput at fixed boundaries.
+                This is the first hint that <em>how fast a system can
+                process its gradient</em> is a separate variable from
+                <em>how big the gradient is</em>.
+            </li>
+        </ul>
+
+        <h2>why this rung matters</h2>
+        <p>
+            R1 told us a closed system flattens. R2 told us a held
+            gradient supports a steady current. R3 says the
+            <em>shape</em> of that current depends on whether the medium
+            itself is moving. Most of biology lives at moderate-to-high
+            Péclet numbers — bloodstreams, mucociliary clearance, axonal
+            transport — and the reason is exactly what you see here:
+            advection moves things much faster than diffusion can across
+            any meaningful distance. Diffusion is fine for two
+            millimetres. Advection is what gets oxygen to your toes.
+        </p>
+
+        <p class="muted">
+            Math + code in
+            <a href="../notes/01-flow.md">notes/01-flow.md</a>.
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

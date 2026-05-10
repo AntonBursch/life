@@ -4,7 +4,7 @@
 //! JS/Rust interop and exposes the diffusion field in a form a Canvas
 //! renderer can consume cheaply.
 
-use flow::{BoundaryCondition, Diffusion1D};
+use flow::{AdvectionDiffusion1D, BoundaryCondition, Diffusion1D};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -137,6 +137,97 @@ impl WasmDriven1D {
     }
 
     /// Boundary values currently in force.
+    #[wasm_bindgen(getter)]
+    pub fn left(&self) -> f64 {
+        self.left
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn right(&self) -> f64 {
+        self.right
+    }
+
+    pub fn phi(&self) -> Vec<f64> {
+        self.inner.phi().to_vec()
+    }
+}
+
+/// R3 — advection-diffusion. Same field as R2, but the medium itself is
+/// moving with velocity `v`. The Péclet number `v · L / D` controls which
+/// term dominates: small Pe looks like R2 (linear), large Pe pushes the
+/// field toward the inflow value across most of the box.
+#[wasm_bindgen]
+pub struct WasmAdvectionDiffusion1D {
+    inner: AdvectionDiffusion1D,
+    left: f64,
+    right: f64,
+}
+
+#[wasm_bindgen]
+impl WasmAdvectionDiffusion1D {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        n: usize,
+        diffusivity: f64,
+        velocity: f64,
+        dx: f64,
+        dt: f64,
+        left: f64,
+        right: f64,
+    ) -> Result<WasmAdvectionDiffusion1D, JsError> {
+        let inner = AdvectionDiffusion1D::new(
+            n,
+            diffusivity,
+            velocity,
+            dx,
+            dt,
+            BoundaryCondition::FixedPair { left, right },
+        )
+        .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(Self { inner, left, right })
+    }
+
+    pub fn step(&mut self) {
+        self.inner.step();
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        self.inner.step_many(n as u64);
+    }
+
+    pub fn reset_interior(&mut self) {
+        let phi = self.inner.phi_mut();
+        let n = phi.len();
+        for v in phi.iter_mut().take(n - 1).skip(1) {
+            *v = 0.0;
+        }
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn time(&self) -> f64 {
+        self.inner.time()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn flux_left(&self) -> f64 {
+        self.inner.flux_left()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn flux_right(&self) -> f64 {
+        self.inner.flux_right()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn peclet(&self) -> f64 {
+        self.inner.peclet()
+    }
+
     #[wasm_bindgen(getter)]
     pub fn left(&self) -> f64 {
         self.left
