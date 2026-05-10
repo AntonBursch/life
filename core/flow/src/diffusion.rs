@@ -17,7 +17,7 @@
 
 use core::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BoundaryCondition {
     /// Zero-flux at both edges (Neumann). Nothing leaves the box.
     /// This is the R1 default — it lets us watch a closed system flatten.
@@ -25,6 +25,11 @@ pub enum BoundaryCondition {
     /// Dirichlet zero — both edges held at 0. Useful as a sanity check; a
     /// hot spot in the middle decays toward zero everywhere.
     Dirichlet,
+    /// Both edges clamped to fixed (but possibly different) values.
+    /// This is R2: a continuous source on one side and sink on the other.
+    /// The field reaches a steady linear profile and stops changing, while
+    /// flux continues to flow from `left` to `right` (or vice versa).
+    FixedPair { left: f64, right: f64 },
 }
 
 #[derive(Debug)]
@@ -225,6 +230,10 @@ impl Diffusion1D {
                 self.next[0] = 0.0;
                 self.next[n - 1] = 0.0;
             }
+            BoundaryCondition::FixedPair { left, right } => {
+                self.next[0] = left;
+                self.next[n - 1] = right;
+            }
         }
 
         std::mem::swap(&mut self.phi, &mut self.next);
@@ -237,6 +246,24 @@ impl Diffusion1D {
         for _ in 0..n {
             self.step();
         }
+    }
+
+    /// Flux (rate of stuff crossing a wall, per unit area, per unit time)
+    /// at the left boundary. Fick's law: `J = -D * d(phi)/dx`. A positive
+    /// value means stuff is flowing into the box from the left wall (so when
+    /// the left edge is hotter than the interior, this is positive).
+    pub fn flux_left(&self) -> f64 {
+        -self.diffusivity * (self.phi[1] - self.phi[0]) / self.dx
+    }
+
+    /// Flux at the right boundary. Same sign convention as `flux_left`: a
+    /// positive value means stuff is flowing rightward through the wall. At
+    /// R2 steady state, `flux_left` and `flux_right` converge to the same
+    /// value — energy in equals energy out, and the gradient is *held open*
+    /// by the through-flow.
+    pub fn flux_right(&self) -> f64 {
+        let n = self.phi.len();
+        -self.diffusivity * (self.phi[n - 1] - self.phi[n - 2]) / self.dx
     }
 }
 
@@ -274,17 +301,29 @@ mod tests {
 
     #[test]
     fn diffusion_flattens_in_time() {
+        // Peak of a delta pulse should decay monotonically toward the mean
+        // until the field is essentially flat. Under zero-flux, the mean is
+        // total / n, which stays put.
         let mut sim =
             Diffusion1D::new(101, 0.5, 1.0, 0.5, BoundaryCondition::ZeroFlux).unwrap();
         sim.seed_centre_pulse();
-        let peak_initial = sim.phi().iter().cloned().fold(f64::MIN, f64::max);
-        for _ in 0..2_000 {
-            sim.step();
-        }
-        let peak_after = sim.phi().iter().cloned().fold(f64::MIN, f64::max);
+        let peak0 = sim.phi().iter().cloned().fold(0.0_f64, f64::max);
+        sim.step_many(2_000);
+        let peak1 = sim.phi().iter().cloned().fold(0.0_f64, f64::max);
+        assert!(peak1 < peak0, "peak did not decay: {peak0} -> {peak1}");
+
+        // After enough steps the spread should approach the half-width
+        // of the box (uniform field).
+        sim.step_many(20_000);
+        let mean = sim.total() / sim.len() as f64;
+        let max_dev = sim
+            .phi()
+            .iter()
+            .map(|&v| (v - mean).abs())
+            .fold(0.0_f64, f64::max);
         assert!(
-            peak_after < peak_initial,
-            "peak did not decrease: {peak_initial} -> {peak_after}"
+            max_dev < 1e-3,
+            "field did not flatten enough: max deviation {max_dev}"
         );
     }
 
@@ -314,6 +353,67 @@ mod tests {
         assert!(
             (ratio - expected).abs() / expected < 0.05,
             "sqrt(t) scaling broke: sigma_a={sigma_a} sigma_b={sigma_b} ratio={ratio} expected={expected}"
+        );
+    }
+
+    #[test]
+    fn driven_reaches_linear_steady_state() {
+        // Hot left, cold right — the analytic steady state is a straight line
+        // from `left` down to `right`. We start from an initially flat zero
+        // field and step long enough to settle.
+        let n = 101;
+        let left = 1.0;
+        let right = 0.0;
+        let mut sim = Diffusion1D::new(
+            n,
+            0.5,
+            1.0,
+            0.5,
+            BoundaryCondition::FixedPair { left, right },
+        )
+        .unwrap();
+        // The boundary values are imposed every step, so the initial interior
+        // condition is mostly cosmetic — leave it at zero.
+        sim.step_many(40_000);
+
+        // Compare to the analytic linear profile.
+        let mut max_err = 0.0_f64;
+        for (i, &v) in sim.phi().iter().enumerate() {
+            let expected = left + (right - left) * (i as f64) / ((n - 1) as f64);
+            max_err = max_err.max((v - expected).abs());
+        }
+        assert!(
+            max_err < 1e-3,
+            "steady state did not match linear profile: max err {max_err}"
+        );
+    }
+
+    #[test]
+    fn steady_state_left_flux_equals_right_flux() {
+        // Once the linear profile has settled, mass crossing the left wall
+        // per tick must equal mass crossing the right wall per tick. That is
+        // the formal statement of "energy in equals energy out".
+        let mut sim = Diffusion1D::new(
+            101,
+            0.5,
+            1.0,
+            0.5,
+            BoundaryCondition::FixedPair { left: 1.0, right: 0.0 },
+        )
+        .unwrap();
+        sim.step_many(40_000);
+        let jl = sim.flux_left();
+        let jr = sim.flux_right();
+        assert!(
+            (jl - jr).abs() < 1e-5,
+            "flux mismatch at steady state: left {jl}, right {jr}"
+        );
+        // And the value should match the analytic answer: J = D * (left - right) / L
+        // where L = (n-1) * dx.
+        let expected = 0.5 * (1.0 - 0.0) / 100.0;
+        assert!(
+            (jl - expected).abs() < 1e-4,
+            "flux magnitude wrong: got {jl}, expected {expected}"
         );
     }
 }

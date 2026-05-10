@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "flow",
     "r01-diffusion",
+    "r02-driven",
     "server",
     "flow-wasm",
 ]

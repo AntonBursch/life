@@ -65,3 +65,89 @@ impl WasmDiffusion1D {
         self.inner.phi().to_vec()
     }
 }
+
+/// R2 — driven diffusion. Same field, same equation, but the left and
+/// right ends are held at fixed values. The system settles into a steady
+/// linear gradient that does not flatten because flux is being maintained.
+#[wasm_bindgen]
+pub struct WasmDriven1D {
+    inner: Diffusion1D,
+    left: f64,
+    right: f64,
+}
+
+#[wasm_bindgen]
+impl WasmDriven1D {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        n: usize,
+        diffusivity: f64,
+        dx: f64,
+        dt: f64,
+        left: f64,
+        right: f64,
+    ) -> Result<WasmDriven1D, JsError> {
+        let inner = Diffusion1D::new(
+            n,
+            diffusivity,
+            dx,
+            dt,
+            BoundaryCondition::FixedPair { left, right },
+        )
+        .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(Self { inner, left, right })
+    }
+
+    pub fn step(&mut self) {
+        self.inner.step();
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        self.inner.step_many(n as u64);
+    }
+
+    /// Reset the interior field to zero. Boundaries are imposed on the next
+    /// step so we don't write to them here.
+    pub fn reset_interior(&mut self) {
+        let phi = self.inner.phi_mut();
+        let n = phi.len();
+        for v in phi.iter_mut().take(n - 1).skip(1) {
+            *v = 0.0;
+        }
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn time(&self) -> f64 {
+        self.inner.time()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn flux_left(&self) -> f64 {
+        self.inner.flux_left()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn flux_right(&self) -> f64 {
+        self.inner.flux_right()
+    }
+
+    /// Boundary values currently in force.
+    #[wasm_bindgen(getter)]
+    pub fn left(&self) -> f64 {
+        self.left
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn right(&self) -> f64 {
+        self.right
+    }
+
+    pub fn phi(&self) -> Vec<f64> {
+        self.inner.phi().to_vec()
+    }
+}

@@ -1,0 +1,15 @@
+[package]
+name = "r02-driven"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "R2: driven diffusion. Hold the ends apart, watch the steady gradient form."
+
+[[bin]]
+name = "r02-driven"
+path = "src/main.rs"
+
+[dependencies]
+flow = { path = "../flow" }
