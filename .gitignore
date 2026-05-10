@@ -13,6 +13,9 @@ build/
 # wasm-pack output
 pkg/
 
+# wasm-bindgen output (generated; rebuilt via scripts/build-wasm.*)
+viewer/pkg/
+
 # Editor / OS
 .vscode/
 .idea/

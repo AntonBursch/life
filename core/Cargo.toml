@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = [
+    "flow",
+    "r01-diffusion",
+    "server",
+    "flow-wasm",
+]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+authors = ["Anton Bursch"]
+repository = "https://github.com/AntonBursch/life"
+
+[profile.release]
+lto = true
+codegen-units = 1

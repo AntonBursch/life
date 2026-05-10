@@ -1,0 +1,22 @@
+[package]
+name = "server"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Static + WebSocket bridge for the life/ viewer."
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[dependencies]
+flow = { path = "../flow" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+axum = { version = "0.7", features = ["ws"] }
+tower-http = { version = "0.6", features = ["fs", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
