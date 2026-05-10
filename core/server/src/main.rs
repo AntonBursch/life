@@ -58,12 +58,12 @@ async fn main() {
         .expect("server error");
 }
 
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(_state): State<AppState>,
-) -> impl IntoResponse {
+async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
     ws.on_upgrade(handle_socket)
-}ws: WebSocketUpgrade    info!("ws client connected");
+}
+
+async fn handle_socket(mut socket: WebSocket) {
+    info!("ws client connected");
     while let Some(msg) = socket.recv().await {
         let msg = match msg {
             Ok(m) => m,
