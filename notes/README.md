@@ -24,6 +24,11 @@ They're meant to keep getting longer.
   flow of time and space. It is not a substance and it cannot be
   produced by function calls. "Give AI time" was a category statement,
   not a feature request.
+- [aside-02-intelligence-didnt-start-with-dna.md](aside-02-intelligence-didnt-start-with-dna.md)
+  — DNA is a solution, not a cause. Intelligence is built on the
+  problem DNA was invented to help solve: how to keep being a coherent
+  thing in a universe that's constantly trying to flatten you. Why
+  the right place to start is R1, not neurons.
 
 ## Coming next
 
