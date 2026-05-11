@@ -27,6 +27,7 @@ members = [
     "r23-excitable-courier",
     "r24-scar-tissue",
     "r25-homeostasis",
+    "r26-self-bounding",
     "server",
     "flow-wasm",
 ]

@@ -3266,3 +3266,149 @@ impl WasmCoupledR25 {
     pub fn trace_activity(&self) -> Vec<f64> { self.trace_activity.clone() }
     pub fn trace_eps(&self) -> Vec<f64> { self.trace_eps.clone() }
 }
+
+// =====================================================================
+// WasmCoupledR26 -- Self-bounding. Phase C, third rung.
+//
+// Memory passes through bulk_gate with a *sharp* sigmoid: where
+// memory exceeds the threshold, the cell becomes a wall (eps =
+// kill_eps); below threshold, normal tissue (eps = base). The
+// wave does not equilibrate with itself -- it carves a topological
+// partition. Same chain skeleton as R24, but bulk_gate replaces
+// modulate_parameter and sharpness becomes the qualitative knob.
+//
+// Chain:
+//   Barkley.step_with_eps_field(eps)
+//   integrate_field(u, memory, dt, leak)
+//   bulk_gate(memory, base, kill_eps, threshold, sharpness, eps)
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR26 {
+    tissue: Barkley2D,
+    memory: Vec<f64>,
+    eps_field: Vec<f64>,
+    base_eps: f64,
+    kill_eps: f64,
+    threshold: f64,
+    sharpness: f64,
+    leak: f64,
+    dt_step: f64,
+    width: usize,
+    height: usize,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR26 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        diffusion: f64,
+        a: f64,
+        b: f64,
+        base_eps: f64,
+        dx: f64,
+        dt: f64,
+        kill_eps: f64,
+        threshold: f64,
+        sharpness: f64,
+        leak: f64,
+    ) -> Result<WasmCoupledR26, JsError> {
+        let tissue = Barkley2D::new(width, height, diffusion, a, b, base_eps, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let n = width * height;
+        Ok(Self {
+            tissue,
+            memory: vec![0.0; n],
+            eps_field: vec![base_eps; n],
+            base_eps,
+            kill_eps,
+            threshold,
+            sharpness,
+            leak,
+            dt_step: dt,
+            width,
+            height,
+        })
+    }
+
+    pub fn step(&mut self) {
+        self.tissue.step_with_eps_field(&self.eps_field, self.base_eps);
+        let u = self.tissue.u();
+        let _ = integrate_field(u, &mut self.memory, self.dt_step, self.leak);
+        let _ = bulk_gate(
+            &self.memory,
+            self.base_eps,
+            self.kill_eps,
+            self.threshold,
+            self.sharpness,
+            &mut self.eps_field,
+        );
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_spiral(&mut self) { self.tissue.seed_spiral(); }
+
+    pub fn kick(&mut self, cx: usize, cy: usize, radius: usize, amplitude: f64) {
+        self.tissue.kick(cx, cy, radius, amplitude);
+    }
+
+    pub fn reset_tissue(&mut self) { self.tissue.reset(); }
+    pub fn reset_memory(&mut self) {
+        for v in &mut self.memory { *v = 0.0; }
+        for v in &mut self.eps_field { *v = self.base_eps; }
+    }
+
+    pub fn set_threshold(&mut self, t: f64) { self.threshold = t.max(0.0); }
+    pub fn set_sharpness(&mut self, s: f64) { self.sharpness = s.max(1e-4); }
+    pub fn set_kill_eps(&mut self, e: f64) { self.kill_eps = e.max(self.base_eps); }
+    pub fn set_leak(&mut self, l: f64) { self.leak = l.max(0.0); }
+    pub fn set_a(&mut self, a: f64) { self.tissue.set_a(a); }
+    pub fn set_b(&mut self, b: f64) { self.tissue.set_b(b); }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.width }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.height }
+    #[wasm_bindgen(getter)]
+    pub fn tissue_time(&self) -> f64 { self.tissue.time() }
+
+    pub fn u_mean(&self) -> f64 {
+        let u = self.tissue.u();
+        u.iter().sum::<f64>() / u.len() as f64
+    }
+    pub fn excited_fraction(&self) -> f64 { self.tissue.excited_fraction() }
+    pub fn memory_max(&self) -> f64 {
+        self.memory.iter().cloned().fold(f64::NEG_INFINITY, f64::max).max(0.0)
+    }
+    pub fn memory_mean(&self) -> f64 {
+        self.memory.iter().sum::<f64>() / self.memory.len() as f64
+    }
+    /// Fraction of cells whose memory exceeds the threshold -- the
+    /// "wall fraction". This is the wave's self-built boundary.
+    pub fn wall_fraction(&self) -> f64 {
+        let thr = self.threshold;
+        let lit = self.memory.iter().filter(|&&m| m > thr).count();
+        lit as f64 / self.memory.len() as f64
+    }
+    pub fn eps_mean(&self) -> f64 {
+        self.eps_field.iter().sum::<f64>() / self.eps_field.len() as f64
+    }
+    pub fn eps_max_current(&self) -> f64 {
+        self.eps_field.iter().cloned().fold(f64::NEG_INFINITY, f64::max).max(0.0)
+    }
+
+    pub fn u_field(&self) -> Vec<f64> { self.tissue.u().to_vec() }
+    pub fn memory_field(&self) -> Vec<f64> { self.memory.clone() }
+    pub fn eps_field(&self) -> Vec<f64> { self.eps_field.clone() }
+    /// Binary wall mask: 1.0 where memory > threshold, 0.0 elsewhere.
+    /// Cheaper render path than normalising eps_field.
+    pub fn wall_mask(&self) -> Vec<f64> {
+        self.memory.iter()
+            .map(|&m| if m > self.threshold { 1.0 } else { 0.0 })
+            .collect()
+    }
+}

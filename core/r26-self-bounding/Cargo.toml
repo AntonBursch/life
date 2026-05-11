@@ -1,0 +1,11 @@
+[package]
+name = "r26-self-bounding"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "r26-self-bounding"
+path = "src/main.rs"
+
+[dependencies]
+flow = { path = "../flow" }

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R26 — Self-bounding · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .tri {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .tri figure { margin: 0; }
+            .tri canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .tri figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .tri { grid-template-columns: repeat(1, 1fr); }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r25-homeostasis/">← R25</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R26 — Self-bounding</h1>
+        <p class="muted">
+            Phase C, third rung. R24 closed the loop with a smooth
+            map (memory dims the tissue everywhere). R25 closed it
+            with a global setpoint (one knob, the whole grid).
+            R26 closes it with a <strong>sharp threshold</strong>:
+            <code>bulk_gate</code> turns memory into a binary
+            wall mask. Where memory crosses the cutoff, ε snaps
+            from base to <code>kill_eps</code> and that cell is
+            no longer excitable. The wave does not equilibrate
+            with itself — it carves a domain and lives inside it.
+            No new operators, just sharpness.
+        </p>
+
+        <div class="tri">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>1 · u (live wave)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="memCanvas"></canvas>
+                <figcaption>2 · memory = ∫ u (leaky)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="wallCanvas"></canvas>
+                <figcaption>3 · wall mask (memory &gt; threshold)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseed">↻ Reseed spiral</button>
+            <button id="healWalls">↻ Heal walls</button>
+            <button id="kick">⚡ Kick</button>
+        </div>
+
+        <div class="controls">
+            <label for="threshold">wall threshold</label>
+            <input id="threshold" type="range" min="0.05" max="1.0" value="0.30" step="0.01" />
+            <span id="thresholdV" class="value">0.30</span>
+
+            <label for="sharpness">sharpness (low = binary)</label>
+            <input id="sharpness" type="range" min="0.01" max="1.0" value="0.05" step="0.01" />
+            <span id="sharpnessV" class="value">0.05</span>
+
+            <label for="killEps">wall ε (kill_eps)</label>
+            <input id="killEps" type="range" min="0.04" max="0.30" value="0.10" step="0.005" />
+            <span id="killEpsV" class="value">0.100</span>
+
+            <label for="leak">memory leak (1/τ)</label>
+            <input id="leak" type="range" min="0.05" max="2.0" value="0.50" step="0.05" />
+            <span id="leakV" class="value">0.50</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="16" value="6" step="1" />
+            <span id="speedV" class="value">6</span>
+        </div>
+
+        <p class="muted">
+            The middle panel shows the analog memory; the right
+            panel shows what the substrate sees after thresholding
+            — the actual no-go region. With sharpness at minimum
+            (0.01–0.05) the right panel is crisp black-or-white;
+            crank sharpness toward 1.0 and the binary partition
+            dissolves into a smooth scar (R24 again).
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (tissue)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">excited frac</span> <span class="v" id="rEx">0.000</span></div>
+            <div><span class="k">&lt;u&gt;</span> <span class="v" id="rUm">0.000</span></div>
+            <div><span class="k">wall fraction</span> <span class="v" id="rWf">0.0%</span></div>
+            <div><span class="k">&lt;memory&gt;</span> <span class="v" id="rMm">0.000</span></div>
+            <div><span class="k">max memory</span> <span class="v" id="rMx">0.000</span></div>
+            <div><span class="k">&lt;ε&gt;</span> <span class="v" id="rEm">0.020</span></div>
+            <div><span class="k">τ = 1/leak</span> <span class="v" id="rTau">2.0</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            <em>History becomes geometry.</em> R24 made the tissue
+            <em>dimmer</em> where the wave had been; R26 makes it
+            <em>absent</em>. The accessible part of the medium is
+            no longer a global property — it is a self-built
+            shape, and the wave lives strictly inside it.
+        </p>
+        <p>
+            CLI verified at sharpness 0.05, threshold 0.3,
+            kill_eps 0.10, leak 0.5: walls stabilise at ~63% of
+            the grid while excited_fraction holds at 0.21–0.26
+            indefinitely — the same activity level as a free R7
+            spiral, but on roughly a third of the available area.
+            With sharpness 0.5 (same threshold, same memory, same
+            kill_eps) the smooth gate dissolves the partition and
+            the wave dies. The qualitative difference is in
+            <em>shape of the map</em>, not in any new physics.
+            Same alphabet, new mode.
+        </p>
+        <p>
+            That is what an alphabet is supposed to do — give
+            you new behaviour by composition. This is the third
+            consecutive Phase-C rung where one chain
+            (integrate → map → parametrise) produces a
+            qualitatively different system depending only on
+            which map you put in the middle. R24 affine,
+            R25 leaky integrator on a scalar setpoint, R26
+            sharp sigmoid. Three different theories of "what
+            the past does to the future", same wiring.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> Watch the wall map fill
+                in the wake of the spiral. After ~50 tissue-time
+                units the walls reach steady state at ~63%, the
+                spiral keeps spinning forever in the remaining
+                third.
+            </li>
+            <li>
+                <strong>Crank sharpness to 1.0.</strong> Walls
+                soften into a smooth halo — and the wave dies
+                within ~30 t.u. The smooth map dims the whole
+                neighbourhood; the sharp map dims only where it
+                must. Same threshold, opposite outcome.
+            </li>
+            <li>
+                <strong>Lower threshold to 0.1.</strong> Walls
+                form faster than the spiral can recruit fresh
+                tissue. Strangulation.
+            </li>
+            <li>
+                <strong>Raise threshold to 0.8.</strong> Walls
+                never form (memory equilibrates below 0.5 at this
+                leak). Free R7 spiral.
+            </li>
+            <li>
+                <strong>Reseed spiral with walls intact.</strong>
+                The fresh spiral must fit inside the pre-existing
+                no-go region. It will deform around the walls
+                rather than rebuilding the same shape from
+                scratch — the memory survived the wave reset.
+            </li>
+            <li>
+                <strong>Heal walls.</strong> Resets memory and ε
+                without touching the wave. Watch the spiral
+                immediately expand to fill the now-fresh grid,
+                then re-carve.
+            </li>
+        </ol>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>
