@@ -227,6 +227,13 @@
                     >New operator <code>react_field</code> (reaction category — local ODE step, mass-action, non-negative). Replaces R27's <code>latch_field</code> with the Schlögl one-species chemical bistable: dX/dt = k₁A·X² − k₂·X³ − k₃·X + k₄B + D·[u − u_θ]₊. With (6, 1, 11, 6) the bare rate factors as −(X−1)(X−2)(X−3): low stable at X=1, separatrix at X=2, high stable at X=3. The wave activator drives autocatalysis where it peaks; ε = base + gain·(X−1). Same irreversibility R27 showed, earned from real chemistry — kill the wave, X stays in its high attractor on its own, no comparator anywhere</span
                 >
             </li>
+            <li>
+                <a href="r28prime-bistable-communication/">R28′ — Bistable communication</a> ·
+                <em class="muted" style="color:#2c7a3d;">[Phase E · substrate-honest rebuild of R28]</em> ·
+                <span class="muted"
+                    >No new operator — same composition as R28 (react then advect), applied to an honest substrate. Schlögl species X from R27′ transported by uniform velocity field via the existing <code>advect_by</code>. Wave commits cells on the left; advection carries X mass rightward; downstream cells receive inflow that lifts them past the X=2 separatrix and they commit on their own via local Schlögl dynamics. CLI 128×96 v=2.5 rightward: by t=30, X_high_R≈0.23; by t=400 the spiral has self-extinguished from globally raised ε but X_high_R is still climbing past 0.45, driven entirely by reactant inflow plus local rate law. Communication is mass-action plus transport, no latches, no advected labels</span
+                >
+            </li>
         </ul>
 
         <p class="muted">

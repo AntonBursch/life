@@ -1,0 +1,12 @@
+[package]
+name = "r28prime-bistable-communication"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "r28prime-bistable-communication"
+path = "src/main.rs"
+
+[dependencies]
+flow = { path = "../flow" }

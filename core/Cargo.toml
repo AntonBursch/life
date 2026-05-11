@@ -32,6 +32,7 @@ members = [
     "r28-communication",
     "r29-convergence",
     "r27prime-bistable-death",
+    "r28prime-bistable-communication",
     "server",
     "flow-wasm",
 ]

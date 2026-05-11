@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R28′ — Bistable communication · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .tri {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .tri figure { margin: 0; }
+            .tri canvas {
+                width: 100%;
+                aspect-ratio: 4 / 3;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .tri figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .tri { grid-template-columns: repeat(1, 1fr); }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r27prime-bistable-death/">← R27′</a> ·
+            <a href="../r28-communication/">R28 (superseded)</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <aside style="border-left:3px solid #2c7a3d;background:#152a1c;padding:10px 14px;margin:12px 0;color:#c0e8c8;">
+            <strong>Substrate-honest rebuild of R28.</strong> R28
+            advected a Schmitt-trigger output (a label) and called
+            it communication. Nature transports <em>reactants</em>,
+            not labels. R28′ takes the R27′ Schlögl species
+            <em>X</em> — a real concentration — and advects it by
+            a uniform velocity field. The downstream commitments
+            are real chemistry: inflow lifts cells past the
+            separatrix, after which the local rate law commits
+            them on its own. See
+            <a href="../THESIS.md" style="color:#a0e6a8;">THESIS.md</a>.
+        </aside>
+
+        <h1>R28′ — Bistable communication</h1>
+        <p class="muted">
+            Phase E, second rung. R27′ established that a real
+            bistable reaction can hold "wall vs. not-wall" without
+            a comparator. R28′ asks: <em>does the wall need to be
+            built where it ends up?</em> Same chemistry as R27′,
+            plus a transport term. The spiral's footprint on the
+            left commits cells to X = 3; advection carries that
+            X mass rightward; downstream cells get a bolus of
+            inflow that pushes their local concentration past the
+            X = 2 separatrix; from there the Schlögl rate law
+            does the rest. No latch anywhere, no comparator
+            anywhere — communication is mass-action plus
+            transport.
+        </p>
+
+        <p>
+            <strong>The composition.</strong> Same alphabet as
+            R27′, plus the existing <code>advect_by</code>:
+        </p>
+        <pre style="margin-left:1em;color:#c0c0c0;">
+Barkley → react_field(X, schlögl + drive) → advect_by(X, v) → modulate_parameter → ε
+        </pre>
+        <p>
+            No new operator in this rung. Pure composition over
+            an honest substrate.
+        </p>
+
+        <div class="tri">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>1 · u (live Barkley wave)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="xCanvas"></canvas>
+                <figcaption>2 · X (Schlögl species, 1…3, advected →)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="epsCanvas"></canvas>
+                <figcaption>3 · ε (refractoriness; from X)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseed">↻ Reseed spiral</button>
+            <button id="killWave">☠ Kill wave</button>
+            <button id="healChem">↻ Reset chemistry</button>
+            <button id="kick">⚡ Kick (right side)</button>
+        </div>
+
+        <div class="controls">
+            <label for="vx">velocity vₓ (cells / t.u., rightward)</label>
+            <input id="vx" type="range" min="-4.0" max="4.0" value="2.5" step="0.1" />
+            <span id="vxV" class="value">2.5</span>
+
+            <label for="drive">drive D (u → X autocatalysis gain)</label>
+            <input id="drive" type="range" min="0.5" max="12.0" value="4.0" step="0.1" />
+            <span id="driveV" class="value">4.0</span>
+
+            <label for="uThr">u threshold u_θ (front-only)</label>
+            <input id="uThr" type="range" min="0.20" max="1.20" value="0.80" step="0.01" />
+            <span id="uThrV" class="value">0.80</span>
+
+            <label for="killEps">wall ε (high-X ε ceiling)</label>
+            <input id="killEps" type="range" min="0.03" max="0.30" value="0.05" step="0.005" />
+            <span id="killEpsV" class="value">0.050</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="16" value="6" step="1" />
+            <span id="speedV" class="value">6</span>
+        </div>
+
+        <p class="muted">
+            The middle panel is the X concentration. Watch X mass
+            stream off the spiral's footprint and into the right
+            half, where cells light up green even though the wave
+            never reaches them. Set velocity to 0 to disable
+            communication; flip it negative to reverse the
+            channel.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (tissue)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">excited frac</span> <span class="v" id="rEx">0.000</span></div>
+            <div><span class="k">&lt;X&gt;</span> <span class="v" id="rXm">1.000</span></div>
+            <div><span class="k">X &gt; 2 left</span> <span class="v" id="rHL">0.0%</span></div>
+            <div><span class="k">X &gt; 2 right</span> <span class="v" id="rHR">0.0%</span></div>
+            <div><span class="k">&lt;ε&gt;</span> <span class="v" id="rEm">0.020</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            <em>Communication is reactant transport plus local
+            bistability.</em> No latches, no advected labels. The
+            spiral runs on the left; X is produced there; the
+            velocity field carries it right; downstream cells
+            cross their own separatrix and self-commit. The
+            right-half walls are built by chemistry the spiral
+            <em>delivered</em>, not by a flag it set.
+        </p>
+        <p>
+            CLI verified at default settings (v = 2.5 rightward,
+            drive 4.0, u_θ 0.8): by t = 30, X_high_R ≈ 0.23 with
+            the spiral still confined to its own footprint on the
+            left. By t = 200 the spiral has self-extinguished
+            (advected X has raised ε globally enough to kill the
+            wave) and X_high_R is still climbing, reaching 0.45
+            by t = 400 — driven entirely by reactant inflow plus
+            local rate law, with no wave anywhere on the grid.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> Watch X build on the
+                left, then leak rightward as a slowly broadening
+                front. The third panel shows ε following along.
+            </li>
+            <li>
+                <strong>Kill wave.</strong> Spiral disappears. X
+                does not. The advection keeps pushing whatever X
+                is already there rightward; downstream
+                commitments continue to occur until the source is
+                depleted.
+            </li>
+            <li>
+                <strong>Set velocity = 0.</strong> The channel
+                closes. X still grows under the spiral but stops
+                migrating; the right half stays at X = 1.
+            </li>
+            <li>
+                <strong>Negative velocity.</strong> Flip the
+                channel: now X migrates leftward and pools at the
+                periodic wrap-around. Same mechanism, opposite
+                direction. The velocity field is the wire.
+            </li>
+            <li>
+                <strong>Drive below 2.</strong> Spiral can't
+                commit anyone locally; nothing gets put on the
+                wire. Bistability without forcing is invisible.
+            </li>
+            <li>
+                <strong>Reset chemistry.</strong> Slams X back to
+                1 everywhere. The only external knob — there is
+                no path back through the substrate itself.
+            </li>
+        </ol>
+
+        <h2>what changed vs. R28</h2>
+        <p>
+            R28 chain: latch_field → advect_by(<em>label</em>) →
+            latch_field → ε. The advected field was a Schmitt
+            output.
+        </p>
+        <p>
+            R28′ chain: react_field(<em>X</em>) →
+            advect_by(<em>X</em>) → ε. The advected field is the
+            reactant itself. No latches in either layer.
+        </p>
+        <p>
+            No new operator in this rung — same composition as
+            R28, applied to an honest substrate. R28′ inherits
+            <code>react_field</code> from R27′ and reuses the
+            existing <code>advect_by</code>. The alphabet stays
+            put; the substrate gets honest.
+        </p>
+
+        <p class="muted">
+            Source:
+            <a href="https://github.com/AntonBursch/life">github.com/AntonBursch/life</a>.
+            Code MIT, prose CC-BY-4.0.
+        </p>
+
+        <script type="module" src="main.js"></script>
+    </body>
+</html>
