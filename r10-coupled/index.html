@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R10 — Coupled substrates · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .triple {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 12px;
+                margin: 12px 0;
+            }
+            .triple figure { margin: 0; }
+            .triple canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .triple figcaption {
+                font-size: 0.85em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r09-kuramoto/">← R9</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R10 — Coupled substrates</h1>
+        <p class="muted">
+            The ladder's first composition. An excitable layer (R7) is
+            running on the same grid as a phase layer (R9). Wherever
+            the excitable layer is currently firing, the phase layer's
+            local coupling shoots up. Wherever the tissue is at rest,
+            the phase layer is nearly uncoupled. The result: synchrony
+            is no longer a uniform property of the canvas, it follows
+            the wave. The phase blob is wherever the spiral is.
+        </p>
+
+        <div class="triple">
+            <figure>
+                <canvas id="actCanvas"></canvas>
+                <figcaption>Barkley activator <em>u</em> (R7)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="gateCanvas"></canvas>
+                <figcaption>Coupling field <em>K</em>(x,t)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="phaseCanvas"></canvas>
+                <figcaption>Phase field <em>θ</em> (R9)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseed">↻ Reseed phases</button>
+            <button id="respiral">↻ New spiral</button>
+        </div>
+
+        <div class="controls">
+            <label for="khi">peak coupling K<sub>hi</sub></label>
+            <input id="khi" type="range" min="0.5" max="10" value="6" step="0.1" />
+            <span id="khiV" class="value">6.0</span>
+
+            <label for="klo">baseline K<sub>lo</sub></label>
+            <input id="klo" type="range" min="0" max="2" value="0.1" step="0.05" />
+            <span id="kloV" class="value">0.10</span>
+
+            <label for="sval">frequency spread σ</label>
+            <input id="sval" type="range" min="0" max="0.6" value="0.15" step="0.01" />
+            <span id="svalV" class="value">0.15</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="200" value="40" step="5" />
+            <span id="speedV" class="value">40</span>
+        </div>
+
+        <p class="muted">
+            Watch the middle canvas: the K-field is a binary-looking
+            mask that tracks the spiral arm. Watch the right canvas:
+            the colour blob lives inside the K-mask, and a faint
+            colour trail persists in the wake. Watch the left canvas:
+            the tissue spiral is the only thing actually doing work.
+            The right two canvases are <em>following</em>.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (tissue)</span> <span class="v" id="rTt">0</span></div>
+            <div>
+                <span class="k">excited fraction</span>
+                <span class="v" id="rExc">0.000</span>
+            </div>
+            <div>
+                <span class="k">K range</span>
+                <span class="v" id="rK">0 .. 0</span>
+            </div>
+            <div>
+                <span class="k">order parameter r</span>
+                <span class="v" id="rR">0.000</span>
+            </div>
+            <div>
+                <span class="k">local correlation</span>
+                <span class="v" id="rLoc">0.000</span>
+            </div>
+            <div>
+                <span class="k">regime</span>
+                <span class="v" id="rRegime">cold</span>
+            </div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            Up to R9 each rung was one substrate doing one thing. R10 is
+            the first time two substrates have to live in the same room.
+            A real brain doesn't fire and lock with one mechanism. Real
+            cardiac tissue doesn't fire and bind with one mechanism.
+            The whole interesting class of phenomena —
+            <em>binding-by-synchrony</em>, gamma rhythms riding on
+            slow theta, segmentation by phase-locking of feature
+            detectors, swarms that flock only where they can see each
+            other — is built out of <strong>one substrate gating
+            another</strong>. R10 is the smallest possible example of
+            that pattern. Excitation gates coupling. Coupling produces
+            sync. Sync follows excitation.
+        </p>
+        <p>
+            The composition operator is one function:
+            <code>excitable_gate(u, K<sub>lo</sub>, K<sub>hi</sub>,
+            threshold, sharpness)</code>. Cheap, monotone,
+            smoothstepped, no learnable parameters. The interesting
+            behaviour is what falls out of it on top of the substrates
+            we already have, not what is built into it. That is the
+            point of a composition: most of the heavy lifting is done
+            by the rungs you already trust.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>K<sub>hi</sub> = 0.5.</strong> The gate is
+                weak. The middle canvas darkens to almost nothing.
+                The right canvas is rainbow snow. Sync gates need a
+                real coupling differential to do work.
+            </li>
+            <li>
+                <strong>K<sub>hi</sub> = 6.</strong> Default. The
+                middle canvas now lights up wherever the wave is.
+                The right canvas develops monochrome blobs riding
+                the spiral.
+            </li>
+            <li>
+                <strong>Push K<sub>hi</sub> to 10.</strong> The
+                gated coupling is strong enough to deep-lock the
+                excited region. The colour blob is almost pure
+                monochrome, and persists in the wake.
+            </li>
+            <li>
+                <strong>Slide σ up to 0.5.</strong> The natural
+                frequencies are spread wider. The same K<sub>hi</sub>
+                can no longer hold sync — colour inside the excited
+                region becomes noisy again. The composition has its
+                own phase boundary, inherited from R9.
+            </li>
+            <li>
+                <strong>Slide K<sub>lo</sub> up.</strong> The
+                "baseline" coupling everywhere is now non-zero. The
+                whole canvas slowly drifts toward partial sync. The
+                wave's bonus on top of that is the shape of the
+                excited region. You have just smoothly interpolated
+                between "pure R9" and "pure R10".
+            </li>
+            <li>
+                <strong>Reseed phases.</strong> The spiral is
+                untouched; only the phase layer's initial conditions
+                change. Watch the wake regrow with new colours, same
+                structure. The substrate dance is invariant to the
+                phase layer's history.
+            </li>
+        </ol>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>Local sync, global incoherence.</strong> The
+                readout shows
+                <code>r</code> (global) staying near zero while local
+                correlation climbs above 0.8. This is the signature of
+                <em>structured</em> synchrony — neighbours march
+                together but the whole population is not on one beat.
+                It is the natural mode of a brain.
+            </li>
+            <li>
+                <strong>Sync trails the wave.</strong> Colour blobs are
+                strongest <em>just behind</em> the spiral tip, not at
+                the tip itself: the wave needs to spend a few timesteps
+                in a cell before the gated coupling can pull its phase
+                into the local consensus. Lag is causality.
+            </li>
+            <li>
+                <strong>Refractory zones forget.</strong> Behind the
+                wave, where the tissue is in refractory (u low, v
+                still elevated), the coupling drops back to
+                K<sub>lo</sub> and the local colour blob slowly
+                decoheres. The pattern is not just "where the wave
+                is" — it is "where the wave has recently been,
+                fading out."
+            </li>
+            <li>
+                <strong>Three timescales talking.</strong> Barkley
+                front speed ≪ phase coupling timescale ≪ natural
+                frequency drift. The composition only works in a
+                window where those timescales agree well enough. Push
+                σ too high or K<sub>hi</sub> too low and the window
+                collapses.
+            </li>
+        </ul>
+
+        <h2>why this rung matters</h2>
+        <p>
+            R10 is the smallest demonstration that the ladder is a
+            composable system, not a museum of disconnected models.
+            Every later rung will be a composition. R11 will probably
+            be a phase layer modulating a reaction rate. R12 will
+            probably be a conserved chemical creating a coupling
+            landscape. The substrate menu (R4, R7, R8, R9) and the
+            coupling-operator menu (starting with
+            <code>excitable_gate</code>) are now the alphabet. Apps
+            will be sentences written in this alphabet.
+        </p>
+        <p>
+            More concretely: R10 produces, with three substrates and
+            one gate, exactly the textbook picture of
+            <em>binding-by-synchrony</em> — a candidate mechanism for
+            how cortical areas link "this feature here belongs with
+            that feature there" by transiently locking their phases.
+            Whether the brain actually uses this trick is still
+            debated. That a tissue made of R7+R9+gate does this
+            without being told to is the point.
+        </p>
+
+        <p class="muted">
+            Math + code: <code>flow::Kuramoto2D::step_with_coupling_field</code>
+            and <code>flow::excitable_gate</code>. Next rung is
+            another composition: same alphabet, different sentence.
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

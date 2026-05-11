@@ -4,7 +4,7 @@
 //! JS/Rust interop and exposes the diffusion field in a form a Canvas
 //! renderer can consume cheaply.
 
-use flow::{AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
+use flow::{excitable_gate, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -694,4 +694,145 @@ impl WasmKuramoto2D {
 
     pub fn theta_field(&self) -> Vec<f64> { self.inner.theta().to_vec() }
     pub fn omega_field(&self) -> Vec<f64> { self.inner.omega().to_vec() }
+}
+
+/// R10 — Coupled substrates. A Barkley excitable layer's activator
+/// gates a per-cell coupling field for a Kuramoto phase layer. Each
+/// `step` advances both substrates together: Barkley.step(), then
+/// `excitable_gate(u, k_lo, k_hi, threshold, sharpness)`, then
+/// Kuramoto.step_with_coupling_field(k_field). The viewer can read
+/// either the activator field, the phase field, or the live coupling
+/// field.
+#[wasm_bindgen]
+pub struct WasmCoupledR10 {
+    tissue: Barkley2D,
+    phase: Kuramoto2D,
+    k_field: Vec<f64>,
+    k_lo: f64,
+    k_hi: f64,
+    threshold: f64,
+    sharpness: f64,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR10 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        // Barkley params
+        diffusion: f64,
+        a: f64,
+        b: f64,
+        eps: f64,
+        dx: f64,
+        dt_tissue: f64,
+        // Kuramoto params
+        dt_phase: f64,
+        // Gate params
+        k_lo: f64,
+        k_hi: f64,
+        threshold: f64,
+        sharpness: f64,
+    ) -> Result<WasmCoupledR10, JsError> {
+        let tissue = Barkley2D::new(width, height, diffusion, a, b, eps, dx, dt_tissue)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let phase = Kuramoto2D::new(width, height, 0.0, dt_phase)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(Self {
+            tissue,
+            phase,
+            k_field: vec![0.0; width * height],
+            k_lo,
+            k_hi,
+            threshold,
+            sharpness,
+        })
+    }
+
+    pub fn step(&mut self) {
+        self.tissue.step();
+        let _ = excitable_gate(
+            self.tissue.u(),
+            self.k_lo,
+            self.k_hi,
+            self.threshold,
+            self.sharpness,
+            &mut self.k_field,
+        );
+        let _ = self.phase.step_with_coupling_field(&self.k_field);
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_spiral(&mut self) { self.tissue.seed_spiral(); }
+    pub fn kick(&mut self, cx: usize, cy: usize, radius: usize, amplitude: f64) {
+        self.tissue.kick(cx, cy, radius, amplitude);
+    }
+    pub fn reset_tissue(&mut self) { self.tissue.reset(); }
+
+    pub fn set_natural_frequencies(&mut self, sigma: f64, seed: u32) {
+        self.phase.set_natural_frequencies(sigma, seed as u64);
+    }
+    pub fn randomise_phases(&mut self, seed: u32) {
+        self.phase.randomise_phases(seed as u64);
+    }
+
+    pub fn set_k_lo(&mut self, v: f64) { if v >= 0.0 { self.k_lo = v; } }
+    pub fn set_k_hi(&mut self, v: f64) { if v >= 0.0 { self.k_hi = v; } }
+    pub fn set_threshold(&mut self, v: f64) { self.threshold = v; }
+    pub fn set_sharpness(&mut self, v: f64) { if v > 0.0 { self.sharpness = v; } }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.tissue.width() }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.tissue.height() }
+    #[wasm_bindgen(getter)]
+    pub fn tissue_time(&self) -> f64 { self.tissue.time() }
+    #[wasm_bindgen(getter)]
+    pub fn phase_time(&self) -> f64 { self.phase.time() }
+    #[wasm_bindgen(getter)]
+    pub fn excited_fraction(&self) -> f64 { self.tissue.excited_fraction() }
+    #[wasm_bindgen(getter)]
+    pub fn order_parameter(&self) -> f64 { self.phase.order_parameter() }
+    #[wasm_bindgen(getter)]
+    pub fn mean_phase(&self) -> f64 { self.phase.mean_phase() }
+    #[wasm_bindgen(getter)]
+    pub fn k_lo(&self) -> f64 { self.k_lo }
+    #[wasm_bindgen(getter)]
+    pub fn k_hi(&self) -> f64 { self.k_hi }
+    #[wasm_bindgen(getter)]
+    pub fn threshold(&self) -> f64 { self.threshold }
+    #[wasm_bindgen(getter)]
+    pub fn sharpness(&self) -> f64 { self.sharpness }
+
+    /// Mean cos(theta_i - theta_j) over 4-neighbour pairs. The R10
+    /// diagnostic: high local correlation with near-zero global r
+    /// means neighbours are marching together but the canvas as a
+    /// whole hasn't locked. That is exactly what excitation-gated
+    /// coupling produces.
+    pub fn local_correlation(&self) -> f64 {
+        let w = self.phase.width();
+        let h = self.phase.height();
+        let theta = self.phase.theta();
+        let mut acc = 0.0;
+        let mut count = 0usize;
+        for j in 0..h {
+            let jp = if j == h - 1 { 0 } else { j + 1 };
+            for i in 0..w {
+                let ip = if i == w - 1 { 0 } else { i + 1 };
+                let t0 = theta[j * w + i];
+                acc += (theta[j * w + ip] - t0).cos();
+                acc += (theta[jp * w + i] - t0).cos();
+                count += 2;
+            }
+        }
+        if count == 0 { 0.0 } else { acc / (count as f64) }
+    }
+
+    pub fn u_field(&self) -> Vec<f64> { self.tissue.u().to_vec() }
+    pub fn theta_field(&self) -> Vec<f64> { self.phase.theta().to_vec() }
+    pub fn k_coupling_field(&self) -> Vec<f64> { self.k_field.clone() }
 }

@@ -1,0 +1,196 @@
+//! R10 coupling primitives — operators that turn one substrate's
+//! state into another substrate's control field.
+//!
+//! Each function here is intentionally tiny. They are the joints
+//! between substrates: an excitable activator drives a per-cell
+//! Kuramoto coupling, a phase field drives a reaction rate, etc.
+//! Composition lives here so the substrate modules stay clean.
+
+/// Smoothstep on Hermite cubic: maps `t` to a 0..1 ease curve.
+#[inline]
+fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
+    if edge1 <= edge0 {
+        // Degenerate: collapse to a hard step at edge0.
+        return if x >= edge0 { 1.0 } else { 0.0 };
+    }
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Turn an excitable activator field `u` into a per-cell coupling
+/// field, written into `out`.
+///
+/// Where the tissue is at rest (`u <= threshold - sharpness`) the
+/// coupling is `k_lo`. Where the tissue is firing
+/// (`u >= threshold + sharpness`) the coupling is `k_hi`. In the
+/// transition band the coupling smoothsteps from `k_lo` to `k_hi`.
+///
+/// `sharpness` is the half-width of the transition band; smaller
+/// values give a crisper gate. Must be `> 0`.
+///
+/// Returns Err if sizes mismatch, `sharpness <= 0`, or either
+/// coupling endpoint is negative.
+pub fn excitable_gate(
+    u: &[f64],
+    k_lo: f64,
+    k_hi: f64,
+    threshold: f64,
+    sharpness: f64,
+    out: &mut [f64],
+) -> Result<(), CouplingError> {
+    if u.len() != out.len() {
+        return Err(CouplingError::SizeMismatch);
+    }
+    if !(sharpness > 0.0) {
+        return Err(CouplingError::BadParam {
+            name: "sharpness",
+            value: sharpness,
+        });
+    }
+    if k_lo < 0.0 {
+        return Err(CouplingError::BadParam {
+            name: "k_lo",
+            value: k_lo,
+        });
+    }
+    if k_hi < 0.0 {
+        return Err(CouplingError::BadParam {
+            name: "k_hi",
+            value: k_hi,
+        });
+    }
+    let lo = threshold - sharpness;
+    let hi = threshold + sharpness;
+    for (ui, oi) in u.iter().zip(out.iter_mut()) {
+        let g = smoothstep(lo, hi, *ui);
+        *oi = k_lo + (k_hi - k_lo) * g;
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CouplingError {
+    SizeMismatch,
+    BadParam { name: &'static str, value: f64 },
+}
+
+impl std::fmt::Display for CouplingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SizeMismatch => write!(f, "input and output fields differ in length"),
+            Self::BadParam { name, value } => {
+                write!(f, "{} is invalid (got {})", name, value)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_bad_inputs() {
+        let u = vec![0.0_f64; 9];
+        let mut out_short = vec![0.0_f64; 8];
+        assert_eq!(
+            excitable_gate(&u, 0.1, 1.0, 0.5, 0.1, &mut out_short),
+            Err(CouplingError::SizeMismatch)
+        );
+        let mut out = vec![0.0_f64; 9];
+        assert!(matches!(
+            excitable_gate(&u, 0.1, 1.0, 0.5, 0.0, &mut out).unwrap_err(),
+            CouplingError::BadParam { name: "sharpness", .. }
+        ));
+        assert!(matches!(
+            excitable_gate(&u, -0.1, 1.0, 0.5, 0.1, &mut out).unwrap_err(),
+            CouplingError::BadParam { name: "k_lo", .. }
+        ));
+        assert!(matches!(
+            excitable_gate(&u, 0.1, -1.0, 0.5, 0.1, &mut out).unwrap_err(),
+            CouplingError::BadParam { name: "k_hi", .. }
+        ));
+    }
+
+    #[test]
+    fn gate_saturates_at_extremes() {
+        let u = vec![-1.0, 0.0, 0.5, 1.0, 2.0];
+        let mut out = vec![0.0_f64; 5];
+        excitable_gate(&u, 0.2, 3.0, 0.5, 0.1, &mut out).unwrap();
+        // Far below threshold -> k_lo.
+        assert!((out[0] - 0.2).abs() < 1e-12);
+        assert!((out[1] - 0.2).abs() < 1e-12);
+        // Exactly at threshold -> midpoint.
+        assert!((out[2] - (0.2 + (3.0 - 0.2) * 0.5)).abs() < 1e-12);
+        // Well above threshold -> k_hi.
+        assert!((out[3] - 3.0).abs() < 1e-12);
+        assert!((out[4] - 3.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn gate_is_monotone() {
+        // For ascending u, the gate output should never decrease.
+        let mut u = vec![0.0_f64; 64];
+        for (i, ui) in u.iter_mut().enumerate() {
+            *ui = -1.0 + 3.0 * (i as f64) / 63.0;
+        }
+        let mut out = vec![0.0_f64; 64];
+        excitable_gate(&u, 0.1, 2.5, 0.4, 0.2, &mut out).unwrap();
+        for w in out.windows(2) {
+            assert!(w[1] >= w[0] - 1e-12, "non-monotone gate: {} -> {}", w[0], w[1]);
+        }
+    }
+
+    #[test]
+    fn gate_drives_kuramoto_layer_into_partial_sync() {
+        // The headline composition: an "excited" patch (high u) creates
+        // a strong-coupling island; the rest stays weakly coupled.
+        // Inside the patch, the local population should synchronise
+        // measurably more than the global average.
+        use crate::kuramoto::Kuramoto2D;
+        let w = 48;
+        let h = 48;
+        let n = w * h;
+
+        // Build a u-field: 1.0 inside a centred 20x20 patch, 0.0 elsewhere.
+        let mut u = vec![0.0_f64; n];
+        for j in 14..34 {
+            for i in 14..34 {
+                u[j * w + i] = 1.0;
+            }
+        }
+        let mut k_field = vec![0.0_f64; n];
+        excitable_gate(&u, 0.1, 3.0, 0.5, 0.1, &mut k_field).unwrap();
+
+        let mut sim = Kuramoto2D::new(w, h, 0.0, 0.05).unwrap();
+        sim.set_natural_frequencies(0.3, 11);
+        sim.randomise_phases(13);
+
+        for _ in 0..5000 {
+            sim.step_with_coupling_field(&k_field).unwrap();
+        }
+
+        // Compute local r over a 16x16 window in the centre of the patch
+        // vs a 16x16 window outside the patch.
+        let local_r = |i0: usize, j0: usize| -> f64 {
+            let mut cs = 0.0;
+            let mut sn = 0.0;
+            let theta = sim.theta();
+            for j in j0..j0 + 16 {
+                for i in i0..i0 + 16 {
+                    let t = theta[j * w + i];
+                    cs += t.cos();
+                    sn += t.sin();
+                }
+            }
+            (cs * cs + sn * sn).sqrt() / 256.0
+        };
+        let r_in = local_r(16, 16);
+        let r_out = local_r(0, 0);
+        assert!(
+            r_in > r_out + 0.3,
+            "gate failed to drive local sync: r_in={} r_out={}",
+            r_in, r_out
+        );
+    }
+}

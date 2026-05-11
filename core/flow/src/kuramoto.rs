@@ -200,6 +200,59 @@ impl Kuramoto2D {
         for _ in 0..n { self.step(); }
     }
 
+    /// One forward-Euler step with a *per-cell* coupling field. Cell `i`
+    /// pulls toward its 4 neighbours with strength `k_field[i] / 4`.
+    /// Returns Err if the field size is wrong or contains negatives.
+    /// This is the composition primitive used by R10: a separate
+    /// substrate (e.g. an excitable activator) computes `k_field`, then
+    /// drives the phase layer through it.
+    pub fn step_with_coupling_field(
+        &mut self,
+        k_field: &[f64],
+    ) -> Result<(), KuramotoError> {
+        if k_field.len() != self.theta.len() {
+            return Err(KuramotoError::InvalidSize);
+        }
+        let w = self.width;
+        let h = self.height;
+        for j in 0..h {
+            let jm = if j == 0 { h - 1 } else { j - 1 };
+            let jp = if j == h - 1 { 0 } else { j + 1 };
+            let row = j * w;
+            let row_m = jm * w;
+            let row_p = jp * w;
+            for i in 0..w {
+                let im = if i == 0 { w - 1 } else { i - 1 };
+                let ip = if i == w - 1 { 0 } else { i + 1 };
+                let idx = row + i;
+                let t0 = self.theta[idx];
+                let k_local = k_field[idx];
+                if k_local < 0.0 {
+                    return Err(KuramotoError::Negative {
+                        name: "k_field[i]",
+                        value: k_local,
+                    });
+                }
+                let s = (self.theta[row + im] - t0).sin()
+                    + (self.theta[row + ip] - t0).sin()
+                    + (self.theta[row_m + i] - t0).sin()
+                    + (self.theta[row_p + i] - t0).sin();
+                self.scratch[idx] = self.omega[idx] + 0.25 * k_local * s;
+            }
+        }
+        let dt = self.dt;
+        for k in 0..self.theta.len() {
+            let mut t = self.theta[k] + dt * self.scratch[k];
+            if t > PI || t <= -PI {
+                t = ((t + PI).rem_euclid(TAU)) - PI;
+            }
+            self.theta[k] = t;
+        }
+        self.time += dt;
+        self.steps += 1;
+        Ok(())
+    }
+
     /// Global order parameter `r` in `[0, 1]`.
     pub fn order_parameter(&self) -> f64 {
         let n = self.theta.len();

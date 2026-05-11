@@ -11,6 +11,7 @@ members = [
     "r07-excitable",
     "r08-cahn-hilliard",
     "r09-kuramoto",
+    "r10-coupled",
     "server",
     "flow-wasm",
 ]
