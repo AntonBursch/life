@@ -26,6 +26,18 @@
             >.
         </p>
 
+        <p style="border-left:3px solid #b08000;background:#2a2415;padding:10px 14px;color:#e0d0a0;">
+            <strong>Substrate-honesty pivot (May 2026).</strong> R24–R29
+            below are marked <em>phenomenological — superseded</em>:
+            they reproduce real behaviour using shortcuts (comparators
+            standing in for bistable chemistry, parameters written
+            from outside, advected labels rather than advected
+            molecules). They stay reachable as the record. Rebuilds
+            (R27′ onward) will replace them with real reaction
+            networks. Standing rule:
+            <a href="https://github.com/AntonBursch/life/blob/main/THESIS.md">THESIS.md</a>.
+        </p>
+
         <h2>Live experiments</h2>
         <ul>
             <li>
@@ -168,36 +180,42 @@
             </li>
             <li>
                 <a href="r24-scar-tissue/">R24 — Scar tissue</a> ·
+                <em class="muted" style="color:#b08000;">[phenomenological — superseded]</em> ·
                 <span class="muted"
                     >Phase C opener — the first closed loop. integrate_field → modulate_parameter (new) → Barkley.step_with_eps_field; the wave's own history sets local excitability; with moderate gain the system reaches a homeostatic equilibrium</span
                 >
             </li>
             <li>
                 <a href="r25-homeostasis/">R25 — Homeostasis</a> ·
+                <em class="muted" style="color:#b08000;">[phenomenological — superseded]</em> ·
                 <span class="muted"
                     >first negative-feedback control loop — total Barkley activity drives a single global ε setpoint that holds excited fraction at a chosen target; kicks become transients, not shifts; thermostat physics</span
                 >
             </li>
             <li>
                 <a href="r26-self-bounding/">R26 — Self-bounding</a> ·
+                <em class="muted" style="color:#b08000;">[phenomenological — superseded]</em> ·
                 <span class="muted"
                     >memory → bulk_gate (sharp) → ε; threshold turns history into a binary wall mask; same alphabet as R24, sharpness is the qualitative knob — sharp = self-built domain, soft = R24 smooth scar; history becomes geometry</span
                 >
             </li>
             <li>
                 <a href="r27-latched-death/">R27 — Latched death</a> ·
+                <em class="muted" style="color:#b08000;">[phenomenological — superseded; rebuild as R27′]</em> ·
                 <span class="muted"
                     >Phase D opener. New operator <code>latch_field</code> (latch category — first stateful op): per-cell Schmitt trigger on memory writes a wall_state field that persists independent of the input. Kill the wave: spiral vanishes, walls remain. First irreversibility on the ladder; structure decouples from process</span
                 >
             </li>
             <li>
                 <a href="r28-communication/">R28 — Communication</a> ·
+                <em class="muted" style="color:#b08000;">[phenomenological — superseded; rebuild as R28′]</em> ·
                 <span class="muted"
                     >Phase D, second rung. No new operator. <code>latch_field</code> ∘ <code>advect_by</code> ∘ <code>latch_field</code> composes into an information channel: a local latch commits walls where the wave has been; that field is advected rightward at v cells/t.u. and re-latched permanently, so every upstream commitment accumulates downstream; eps is driven by the transmitted field, not the local one. Walls travel without their builder — the dead spiral's words keep arriving</span
                 >
             </li>
             <li>
                 <a href="r29-convergence/">R29 — Convergence</a> ·
+                <em class="muted" style="color:#b08000;">[phenomenological — superseded; rebuild as R29′]</em> ·
                 <span class="muted"
                     >Phase D, third rung. Still no new operator — same composition as R28, but the velocity field is position-dependent (left half flows right, right half flows left). Two spirals at opposite ends; their wall fields advect inward and accumulate permanently at the midline. Communication composes: two channels through the same medium OR into one accumulator. The midline carries a superposition of histories from sources that may no longer exist</span
                 >

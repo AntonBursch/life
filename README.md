@@ -25,6 +25,12 @@ intelligence with senses and a body in the real world — is laid out in
 The operational plan — one experiment per rung, each adding the smallest
 possible increment to the one below — is in [LADDER.md](LADDER.md).
 
+The standing rule that every operator must correspond to a real
+mechanism in nature — no comparators standing in for chemistry, no
+parameters written from outside, no advected labels — is in
+[THESIS.md](THESIS.md). Adopted at R29 → R27′. Binding on all
+work going forward.
+
 A standing letter from Claude to future Claude instances who pick this
 project up cold is in [FOR-FUTURE-CLAUDE.md](FOR-FUTURE-CLAUDE.md).
 Future instances are invited to append to it.

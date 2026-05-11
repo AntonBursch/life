@@ -249,3 +249,82 @@ metabolic shortcut weakens.
 
 We are not committing to the conclusions. We are committing to the
 discipline of climbing one rung at a time and seeing what holds.
+
+## Substrate honesty audit (May 2026)
+
+This ladder was written before we started building, and the actual
+build path diverged from it in two ways:
+
+1. We built many rungs the ladder did not list. R15 through R29
+   are real and live in the repo; they explored compositions
+   inside Phase B (R20–R23), Phase C (R24–R26) and Phase D
+   (R27–R29) that turned out to be useful intermediate work.
+2. Several of those rungs leaned on **phenomenological
+   shortcuts** — comparators standing in for chemistry, parameter
+   knobs being written from outside, advected labels rather than
+   advected molecules. They reproduced the *behaviour* of the
+   real thing without the *mechanism*.
+
+The shortcuts are now named, and the policy on them is in
+[THESIS.md](THESIS.md): every operator that touches the substrate
+must correspond to a real physical mechanism. No exceptions
+going forward.
+
+### Rungs marked phenomenological → superseded
+
+- **R24 scar tissue** — modulates ε directly from memory. Real
+  mechanism would be: an inhibitor species accumulates from wave
+  activity and changes a reaction rate through ordinary mass-
+  action. Correction note pending; rebuild after R27′.
+- **R25 homeostasis** — modulates ε from a global error signal.
+  No such global error bus exists in nature; control is local
+  through coupled concentrations. Correction note pending.
+- **R26 self-bounding** — uses `bulk_gate` to turn memory into
+  a wall mask. The mask is not a species; the gate is not a
+  reaction. Correction note pending.
+- **R27 latched death** — `latch_field` is a Schmitt trigger.
+  Nature does this with bistable reaction networks (mitotic
+  switch, lac operon class). Rebuild as **R27′** using a real
+  bistable two-species reaction.
+- **R28 communication** — advects the latch state. Nature
+  advects molecules. Rebuild as **R28′** once R27′ stands.
+- **R29 convergence** — same shortcut, two sources. Rebuild as
+  **R29′** once R28′ stands.
+
+These rungs stay on disk. Their commits and viewers stay
+reachable. They are kept as the historical record of the
+phenomenology we already understand. They no longer count as
+load-bearing rungs of the ladder.
+
+### Rungs that stand
+
+R1 through R23 stand as honest physics. Diffusion, advection,
+reaction–diffusion (Gray–Scott), excitable media (Barkley),
+phase coupling (Kuramoto), and compositions among them — every
+one of those corresponds to a real mechanism in nature.
+
+### New operator before rebuilds: `react_field`
+
+The rebuilds require one new operator: a local ODE step that
+advances one or more species fields by one tick of a specified
+reaction network, enforcing non-negativity and (where the
+network is closed) stoichiometric conservation. This is the
+*one* operator added in this pivot. It subsumes the role
+`latch_field` was secretly playing. It is the same operator
+nature uses everywhere.
+
+### The rebuild order
+
+- **R27′ Bistable death.** Walls as a real species state.
+- **R28′ Channel.** Real species advected with full chemistry.
+- **R29′ Convergence.** Two sources of the same real species.
+- **R30 Enclosure.** First proto-cell candidate — a closed
+  boundary maintained by a coupled reaction that spends a
+  downhill flow. The first thing in this folder that ARC's
+  rung 5 would recognise.
+
+After R30, the original ladder's R6 active transport, R7
+spontaneous compartments, R8 proto-cell, etc., come back into
+view — but they will be built on a substrate that has earned the
+right to attempt them.
+
