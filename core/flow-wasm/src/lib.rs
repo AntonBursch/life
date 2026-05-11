@@ -2302,3 +2302,170 @@ impl WasmCoupledR19 {
     pub fn dose_field(&self) -> Vec<f64> { self.dose.clone() }
     pub fn avg_field(&self) -> Vec<f64> { self.avg.clone() }
 }
+
+// =====================================================================
+// R20: events seed matter. Phase-B opener. Barkley (R7) spikes via
+// threshold_event (R18's operator) deposit V into autonomous
+// Gray-Scott (R4) chemistry in the stable-spots regime. Each event
+// seeds an isolated spot only if the cell and its 4 neighbours are
+// empty -- this keeps spots spaced apart so the chemistry has U
+// left to feed them, instead of coating the whole grid and
+// starving itself. Once seeded, GS runs by itself: turning the
+// wave off does *not* collapse the pattern. The wave was creative,
+// not modulatory. No new operator -- first Phase-B composition.
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR20 {
+    wave: Barkley2D,
+    chem: GrayScott2D,
+    prev_u: Vec<f64>,
+    events: Vec<u8>,
+    threshold: f64,
+    inject_v: f64,
+    empty_v: f64,
+    wave_on: bool,
+    bark_substeps: u32,
+    last_events: u32,
+    cumulative_events: u64,
+    width: usize,
+    height: usize,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR20 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+    ) -> Result<WasmCoupledR20, JsError> {
+        let wave = Barkley2D::new(width, height, 1.0, 0.75, 0.06, 0.02, 1.0, 0.05)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        // Stable spots regime: f=0.030, k=0.062.
+        let chem = GrayScott2D::new(width, height, 0.16, 0.08, 0.030, 0.062, 1.0, 1.0)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let n = width * height;
+        Ok(Self {
+            prev_u: wave.u().to_vec(),
+            wave,
+            chem,
+            events: vec![0; n],
+            threshold: 0.4,
+            inject_v: 0.5,
+            empty_v: 0.05,
+            wave_on: true,
+            bark_substeps: 20,
+            last_events: 0,
+            cumulative_events: 0,
+            width,
+            height,
+        })
+    }
+
+    /// One chemistry step. The wave (if on) is advanced
+    /// `bark_substeps` times; each substep emits rising-edge
+    /// events that seed isolated empty cells in V.
+    pub fn step(&mut self) {
+        let w = self.width;
+        let h = self.height;
+        let mut step_events = 0u32;
+        if self.wave_on {
+            for _ in 0..self.bark_substeps {
+                self.prev_u.copy_from_slice(self.wave.u());
+                self.wave.step();
+                let u = self.wave.u();
+                let _ = threshold_event(&self.prev_u, u, self.threshold, &mut self.events);
+                for j in 0..h {
+                    let jn = if j == 0 { h - 1 } else { j - 1 };
+                    let js = if j + 1 == h { 0 } else { j + 1 };
+                    for i in 0..w {
+                        let idx = j * w + i;
+                        if self.events[idx] != 1 {
+                            continue;
+                        }
+                        let iw = if i == 0 { w - 1 } else { i - 1 };
+                        let ie = if i + 1 == w { 0 } else { i + 1 };
+                        let v = self.chem.v();
+                        if v[idx] < self.empty_v
+                            && v[j * w + iw] < self.empty_v
+                            && v[j * w + ie] < self.empty_v
+                            && v[jn * w + i] < self.empty_v
+                            && v[js * w + i] < self.empty_v
+                        {
+                            self.chem.v_mut()[idx] = self.inject_v;
+                            step_events += 1;
+                        }
+                    }
+                }
+            }
+        }
+        self.last_events = step_events;
+        self.cumulative_events += step_events as u64;
+        self.chem.step();
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_spiral(&mut self) {
+        self.wave.seed_spiral();
+        self.prev_u.copy_from_slice(self.wave.u());
+    }
+
+    pub fn kick(&mut self, cx: usize, cy: usize, radius: usize, amplitude: f64) {
+        self.wave.kick(cx, cy, radius, amplitude);
+        self.prev_u.copy_from_slice(self.wave.u());
+    }
+
+    pub fn reset_wave(&mut self) {
+        self.wave.reset();
+        self.prev_u.copy_from_slice(self.wave.u());
+    }
+
+    pub fn reset_chem(&mut self) {
+        self.chem.reset();
+        self.cumulative_events = 0;
+        self.last_events = 0;
+    }
+
+    pub fn set_wave_on(&mut self, on: bool) { self.wave_on = on; }
+    pub fn set_threshold(&mut self, v: f64) { self.threshold = v; }
+    pub fn set_inject(&mut self, v: f64) { self.inject_v = v.clamp(0.0, 1.0); }
+    pub fn set_empty(&mut self, v: f64) { self.empty_v = v.clamp(0.0, 1.0); }
+    pub fn set_a(&mut self, a: f64) { self.wave.set_a(a); }
+    pub fn set_b(&mut self, b: f64) { self.wave.set_b(b); }
+    pub fn set_eps(&mut self, e: f64) { self.wave.set_eps(e); }
+    pub fn set_feed(&mut self, f: f64) { self.chem.set_feed(f); }
+    pub fn set_kill(&mut self, k: f64) { self.chem.set_kill(k); }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.width }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.height }
+    #[wasm_bindgen(getter)]
+    pub fn wave_time(&self) -> f64 { self.wave.time() }
+    #[wasm_bindgen(getter)]
+    pub fn chem_time(&self) -> f64 { self.chem.time() }
+    #[wasm_bindgen(getter)]
+    pub fn wave_is_on(&self) -> bool { self.wave_on }
+    #[wasm_bindgen(getter)]
+    pub fn events_last_step(&self) -> u32 { self.last_events }
+    #[wasm_bindgen(getter)]
+    pub fn cumulative_event_count(&self) -> f64 { self.cumulative_events as f64 }
+
+    pub fn v_mean(&self) -> f64 { self.chem.mean_v() }
+    pub fn v_max(&self) -> f64 { self.chem.max_v() }
+    /// Fraction of cells with V > 0.2 (a "lit spot").
+    pub fn v_coverage(&self) -> f64 {
+        let v = self.chem.v();
+        let lit = v.iter().filter(|x| **x > 0.2).count();
+        lit as f64 / v.len() as f64
+    }
+
+    pub fn u_field(&self) -> Vec<f64> { self.wave.u().to_vec() }
+    pub fn events_field(&self) -> Vec<f64> {
+        self.events.iter().map(|e| *e as f64).collect()
+    }
+    pub fn chem_v_field(&self) -> Vec<f64> { self.chem.v().to_vec() }
+    pub fn chem_u_field(&self) -> Vec<f64> { self.chem.u().to_vec() }
+}

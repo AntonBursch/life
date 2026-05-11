@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R20 — Events seed matter · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .tri {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .tri figure { margin: 0; }
+            .tri canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .tri figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .tri { grid-template-columns: repeat(1, 1fr); }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r19-memory-of-waves/">← R19</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R20 — Events seed matter</h1>
+        <p class="muted">
+            First Phase-B composition. No new operator. Barkley
+            spirals (R7) emit rising-edge events through
+            <code>threshold_event</code> (R18). Each event
+            <em>deposits</em> V into an autonomous Gray-Scott
+            chemistry (R4) running in the stable-spots regime
+            (f=0.030, k=0.062). The wave only writes; the
+            chemistry runs by itself. Turn the wave off and the
+            pattern keeps going — and even grows.
+        </p>
+
+        <div class="tri">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>1 · Barkley u (the wave)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="eventsCanvas"></canvas>
+                <figcaption>2 · events (rising edges)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="vCanvas"></canvas>
+                <figcaption>3 · Gray-Scott V (the pattern)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="waveToggle">🌊 Wave: ON</button>
+            <button id="reseed">↻ Reseed spiral</button>
+            <button id="resetChem">↻ Reset chemistry</button>
+            <button id="kick">⚡ Kick centre</button>
+        </div>
+
+        <div class="controls">
+            <label for="threshold">event threshold</label>
+            <input id="threshold" type="range" min="0.1" max="0.9" value="0.4" step="0.05" />
+            <span id="thresholdV" class="value">0.40</span>
+
+            <label for="inject">V inject</label>
+            <input id="inject" type="range" min="0.1" max="1.0" value="0.5" step="0.05" />
+            <span id="injectV" class="value">0.50</span>
+
+            <label for="eps">excitable ε</label>
+            <input id="eps" type="range" min="0.005" max="0.05" value="0.02" step="0.005" />
+            <span id="epsV" class="value">0.020</span>
+
+            <label for="speed">chem steps / frame</label>
+            <input id="speed" type="range" min="0" max="6" value="1" step="1" />
+            <span id="speedV" class="value">1</span>
+        </div>
+
+        <p class="muted">
+            Read in order. Panel 1: the wave that does the
+            writing. Panel 2: where it is writing <em>right
+            now</em> (rising edges into the threshold operator).
+            Panel 3: what got written. Each event seeds an
+            isolated spot only if its 5-cell neighbourhood is
+            empty — that's what keeps the pattern from coating
+            the whole grid and starving itself of U. After spots
+            exist, they grow and split on their own. Click
+            <em>Wave: ON</em> to freeze the Barkley layer and
+            confirm: the chemistry doesn't need the wave anymore.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">wave</span> <span class="v" id="rWave">ON</span></div>
+            <div><span class="k">chem t</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">events / step</span> <span class="v" id="rEvStep">0</span></div>
+            <div><span class="k">cum events</span> <span class="v" id="rEvCum">0</span></div>
+            <div><span class="k">&lt;V&gt;</span> <span class="v" id="rVmean">0.000</span></div>
+            <div><span class="k">coverage V&gt;0.2</span> <span class="v" id="rCov">0.0%</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            <em>Discrete events from one substrate can deposit
+            persistent matter in another substrate.</em>
+        </p>
+        <p>
+            The wave never feeds the chemistry. It only fires.
+            Each rising edge is a single bit — <code>1</code>
+            here, <code>0</code> there — emitted by
+            <code>threshold_event</code> at the moment a cell
+            crosses the threshold. The handler reads that bit and
+            writes V into the chemical substrate. From the
+            chemistry's perspective, the wave is invisible: it
+            just gets occasional seeded spots and runs its own
+            Pearson-regime dynamics on them. Stop the wave and
+            the spots keep replicating.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> Let it run ~30 seconds.
+                You should see spots dotting the path of the
+                spiral. Some will replicate.
+            </li>
+            <li>
+                <strong>Turn the wave off.</strong> Click
+                <em>Wave: ON</em> (it becomes OFF). Panel 1 stops
+                changing, panel 2 goes dark. Panel 3 keeps
+                evolving. New spots appear from splitting, not
+                from new events.
+            </li>
+            <li>
+                <strong>Reset chemistry, keep the wave.</strong>
+                The pattern rebuilds from the next wave passage.
+                Run-to-run reproducibility lives in the spiral.
+            </li>
+            <li>
+                <strong>Lower the threshold.</strong> More cells
+                fire on each wave passage. The grid fills faster
+                — but the isolation gate keeps spots spaced.
+            </li>
+            <li>
+                <strong>Compare with R13.</strong> R13 gates
+                Gray-Scott <em>feed</em> via <code>excitable_gate</code> —
+                continuous bias. If you stopped the wave there,
+                chemistry would die because the feed-field bias
+                would die with it. R20's chemistry is autonomous.
+                The wave is creative, not modulatory.
+            </li>
+        </ol>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

@@ -21,6 +21,7 @@ members = [
     "r17-territory-carries-dye",
     "r18-waves-leave-marks",
     "r19-memory-of-waves",
+    "r20-events-seed-matter",
     "server",
     "flow-wasm",
 ]
