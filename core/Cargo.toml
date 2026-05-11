@@ -8,6 +8,7 @@ members = [
     "r04-grayscott",
     "r05-convection",
     "r06-swift-hohenberg",
+    "r07-excitable",
     "server",
     "flow-wasm",
 ]

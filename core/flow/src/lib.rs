@@ -9,11 +9,13 @@
 pub mod advection;
 pub mod convection;
 pub mod diffusion;
+pub mod barkley;
 pub mod gray_scott;
 pub mod swift_hohenberg;
 
 pub use advection::AdvectionDiffusion1D;
 pub use convection::Convection2D;
 pub use diffusion::{Diffusion1D, BoundaryCondition};
+pub use barkley::Barkley2D;
 pub use gray_scott::GrayScott2D;
 pub use swift_hohenberg::SwiftHohenberg2D;

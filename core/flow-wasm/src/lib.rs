@@ -4,7 +4,7 @@
 //! JS/Rust interop and exposes the diffusion field in a form a Canvas
 //! renderer can consume cheaply.
 
-use flow::{AdvectionDiffusion1D, BoundaryCondition, Convection2D, Diffusion1D, GrayScott2D, SwiftHohenberg2D};
+use flow::{AdvectionDiffusion1D, Barkley2D, BoundaryCondition, Convection2D, Diffusion1D, GrayScott2D, SwiftHohenberg2D};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -514,4 +514,68 @@ impl WasmSwiftHohenberg2D {
     pub fn u_field(&self) -> Vec<f64> {
         self.inner.u().to_vec()
     }
+}
+
+/// R7 — Barkley excitable medium. Two fields, fast `u` and slow `v`.
+/// A suprathreshold kick triggers a stereotyped excursion that propagates
+/// as a wave; a broken wavefront curls into a sustained spiral.
+#[wasm_bindgen]
+pub struct WasmBarkley2D {
+    inner: Barkley2D,
+}
+
+#[wasm_bindgen]
+impl WasmBarkley2D {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        diffusion: f64,
+        a: f64,
+        b: f64,
+        eps: f64,
+        dx: f64,
+        dt: f64,
+    ) -> Result<WasmBarkley2D, JsError> {
+        let inner = Barkley2D::new(width, height, diffusion, a, b, eps, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    pub fn step(&mut self) { self.inner.step(); }
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.inner.step(); }
+    }
+    pub fn reset(&mut self) { self.inner.reset(); }
+    pub fn seed_spiral(&mut self) { self.inner.seed_spiral(); }
+    pub fn kick(&mut self, cx: usize, cy: usize, radius: usize, amplitude: f64) {
+        self.inner.kick(cx, cy, radius, amplitude);
+    }
+    pub fn set_a(&mut self, a: f64) { self.inner.set_a(a); }
+    pub fn set_b(&mut self, b: f64) { self.inner.set_b(b); }
+    pub fn set_eps(&mut self, eps: f64) { self.inner.set_eps(eps); }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.inner.width() }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.inner.height() }
+    #[wasm_bindgen(getter)]
+    pub fn time(&self) -> f64 { self.inner.time() }
+    #[wasm_bindgen(getter)]
+    pub fn a(&self) -> f64 { self.inner.a() }
+    #[wasm_bindgen(getter)]
+    pub fn b(&self) -> f64 { self.inner.b() }
+    #[wasm_bindgen(getter)]
+    pub fn eps(&self) -> f64 { self.inner.eps() }
+    #[wasm_bindgen(getter)]
+    pub fn mean_u(&self) -> f64 { self.inner.mean_u() }
+    #[wasm_bindgen(getter)]
+    pub fn variance_u(&self) -> f64 { self.inner.variance_u() }
+    #[wasm_bindgen(getter)]
+    pub fn max_abs_u(&self) -> f64 { self.inner.max_abs_u() }
+    #[wasm_bindgen(getter)]
+    pub fn excited_fraction(&self) -> f64 { self.inner.excited_fraction() }
+
+    pub fn u_field(&self) -> Vec<f64> { self.inner.u().to_vec() }
+    pub fn v_field(&self) -> Vec<f64> { self.inner.v().to_vec() }
 }

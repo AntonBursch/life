@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R7 — Excitable media · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r06-swift-hohenberg/">← R6</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R7 — Excitable media</h1>
+        <p class="muted">
+            Every rung before this made patterns that <em>sit</em>. R4
+            chemicals, R5 convection rolls, R6 stripes — none of them
+            go anywhere. Excitable media are different. A small kick
+            launches a stereotyped wave that propagates through the
+            tissue. Break the wavefront and the broken end curls into
+            a spiral that keeps spinning. This is the first rung
+            where pattern has <em>direction</em> and <em>history</em>:
+            where a state moves through space like a thought through
+            tissue, leaves a refractory trail behind it, and refuses
+            to die.
+        </p>
+
+        <div class="canvas-wrap">
+            <canvas
+                id="field"
+                style="
+                    height: 380px;
+                    aspect-ratio: 1 / 1;
+                "
+            ></canvas>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reset">↺ Rest medium</button>
+            <button id="spiral">⤺ Seed spiral</button>
+        </div>
+
+        <div class="btnrow">
+            <span class="muted">Click the canvas to drop a suprathreshold kick.</span>
+        </div>
+
+        <div class="controls">
+            <label for="speed">steps / frame</label>
+            <input
+                id="speed"
+                type="range"
+                min="0"
+                max="200"
+                value="60"
+                step="5"
+            />
+            <span id="speedV" class="value">60</span>
+
+            <label for="bval">threshold b</label>
+            <input
+                id="bval"
+                type="range"
+                min="0.001"
+                max="0.1"
+                value="0.01"
+                step="0.001"
+            />
+            <span id="bvalV" class="value">0.010</span>
+
+            <label for="epsval">recovery eps</label>
+            <input
+                id="epsval"
+                type="range"
+                min="0.005"
+                max="0.06"
+                value="0.02"
+                step="0.001"
+            />
+            <span id="epsvalV" class="value">0.020</span>
+        </div>
+
+        <p class="muted">
+            Threshold sets how easily the medium fires; recovery sets
+            how fast the refractory tail clears. The wavelength and
+            spiral period both grow as recovery slows.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">time</span> <span class="v" id="rT">0</span></div>
+            <div>
+                <span class="k">⟨u⟩</span>
+                <span class="v" id="rMean">0</span>
+            </div>
+            <div>
+                <span class="k">variance(u)</span>
+                <span class="v" id="rVar">0</span>
+            </div>
+            <div>
+                <span class="k">excited fraction</span>
+                <span class="v" id="rFrac">0.000</span>
+            </div>
+            <div>
+                <span class="k">regime</span>
+                <span class="v" id="rRegime">rest</span>
+            </div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            Take a tissue made of cells. Each cell has two knobs: a
+            <em>fast</em> variable that wants to fire when pushed past
+            a small threshold, and a <em>slow</em> variable that lifts
+            the threshold higher right after a firing, then slowly
+            relaxes back. The cell is stable at rest. Nudge it a
+            little and it returns. Nudge it past threshold and it
+            executes a stereotyped excursion: spike, plateau,
+            refractory recovery, back to rest. Couple cells through
+            diffusion of the fast variable and the excursion
+            <em>spreads</em>. That's a wave. Break the wave's leading
+            edge and the broken end can't keep going straight — it
+            curls. The curl chases its own tail. You now have a
+            spiral that pumps fronts through the medium forever,
+            using only the standing energy supplied by the resting
+            cells. The medium is not a pattern-holder. It is a
+            pattern-<em>conductor</em>.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Start at rest.</strong> The canvas is uniformly
+                dark. Nothing happens. The medium is alive but quiet.
+            </li>
+            <li>
+                <strong>Drop one kick.</strong> Click anywhere on the
+                canvas. A bright circle appears and expands outward
+                as a clean ring wave. The ring has a sharp leading
+                edge and a refractory tail. Where the tail reaches
+                back to the centre, the centre has already recovered,
+                so nothing fires there a second time — the wave moves
+                outward only.
+            </li>
+            <li>
+                <strong>Drop two kicks.</strong> Click once, wait, then
+                click again nearby. The second ring will collide with
+                the first and the two annihilate. Excitable waves
+                cannot pass through each other; they share the
+                refractory tissue and cancel.
+            </li>
+            <li>
+                <strong>Make a spiral.</strong> Click
+                <code>⤺ Seed spiral</code>. A broken wavefront sets
+                up. Within a few rotations the broken end finds its
+                geometry and locks into a clean spiral. From now on
+                the medium emits one wave per rotation, forever.
+            </li>
+            <li>
+                <strong>Tighten or slow the recovery.</strong> Drag
+                <code>recovery eps</code>. Smaller eps means longer
+                refractory tails, longer wavelengths, slower spirals.
+                Larger eps means tighter spirals and faster turnover.
+                The geometry of the pattern is set by the kinetics of
+                a single cell.
+            </li>
+            <li>
+                <strong>Try a low threshold.</strong> Drag
+                <code>threshold b</code> down toward 0.001. The
+                medium becomes hyper-excitable. Tiny perturbations
+                fire. Multiple spiral cores can spontaneously form
+                and tile the box.
+            </li>
+        </ol>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>Stereotyped excursion.</strong> Every firing
+                cell goes through the same shape, regardless of how
+                hard the kick was. Above threshold the response is
+                all-or-nothing. This is the binary code of a neuron,
+                a heart cell, a slime-mould tendril.
+            </li>
+            <li>
+                <strong>Refractory tail.</strong> Behind every front
+                is a region that won't fire again until it recovers.
+                That is why waves don't bounce back, why spirals
+                rotate one way and never reverse, why two waves
+                annihilate on collision. The tail is what gives the
+                pattern <em>direction</em>.
+            </li>
+            <li>
+                <strong>Spiral as memory.</strong> Once the spiral
+                exists, the medium remembers it. Remove the kick that
+                started it; the spiral persists. The only way to kill
+                a spiral is to overrun its core. The medium is now
+                holding information — the existence and position of
+                the spiral tip — entirely in its dynamical state.
+                There is nothing stored anywhere; the running pattern
+                <em>is</em> the memory.
+            </li>
+        </ul>
+
+        <h2>why this rung matters</h2>
+        <p>
+            R4–R6 were pattern in space. R7 is pattern in
+            <em>space-time</em>. The medium does not record what
+            happened in some buffer; it keeps the past alive by
+            literally continuing to do it. Spiral cores are the
+            simplest physical example of a system whose current state
+            depends on its history and whose history cannot be
+            recovered from a snapshot — you need to watch it run.
+            That is the first ingredient of memory, of computation,
+            of thought. Hearts use exactly this substrate to keep
+            beating; arrhythmias are spirals gone wrong. Slime moulds
+            use this substrate to choose between food sources.
+            Brains, at one level of abstraction, are an obscenely
+            sophisticated version of the same trick: a tissue of
+            excitable cells whose travelling patterns are the
+            cognition.
+        </p>
+
+        <p class="muted">
+            Math + code in
+            <a href="../notes/01-flow.md">notes/01-flow.md</a>. Next
+            rung: a substrate that doesn't just pump fronts but
+            <em>holds territory</em> — phase separation, where two
+            phases compete for space and the boundaries between them
+            become the unit of information.
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>
