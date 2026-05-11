@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R27′ — Bistable death · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .tri {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .tri figure { margin: 0; }
+            .tri canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .tri figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .tri { grid-template-columns: repeat(1, 1fr); }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r27-latched-death/">← R27 (superseded)</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <aside style="border-left:3px solid #2c7a3d;background:#152a1c;padding:10px 14px;margin:12px 0;color:#c0e8c8;">
+            <strong>Substrate-honest rebuild of R27.</strong> No
+            <code>latch_field</code>. No Schmitt trigger. The
+            walls here are <em>real chemistry</em>: a one-species
+            bistable reaction (Schlögl model) with the wave
+            activator driving the autocatalytic step. The
+            phenomenology is the same — kill the wave, the walls
+            persist — but every number is a concentration obeying
+            mass-action. See
+            <a href="../THESIS.md" style="color:#a0e6a8;">THESIS.md</a>.
+        </aside>
+
+        <h1>R27′ — Bistable death</h1>
+        <p class="muted">
+            Phase E opener. R27 made walls irreversible with a
+            comparator (<code>latch_field</code>). Nature has no
+            comparators; nature has <em>bistable reaction
+            networks</em> — mass-action systems whose rate ODE has
+            two stable fixed points. The mitotic switch, the lac
+            operon, sporulation, prion conversion. R27′ uses the
+            simplest one — the Schlögl model — as the substrate
+            for "wall vs. not-wall".
+        </p>
+
+        <p>
+            <strong>The reaction.</strong> A new species <em>X</em>
+            lives on the grid. Two elementary steps:
+        </p>
+        <pre style="margin-left:1em;color:#c0c0c0;">
+A + 2X ⇌ 3X      (autocatalysis)
+X ⇌ B            (decay)
+        </pre>
+        <p>
+            with mass-action kinetics
+        </p>
+        <pre style="margin-left:1em;color:#c0c0c0;">
+dX/dt = k₁A·X² − k₂·X³ − k₃·X + k₄B  +  D·[u − u_θ]₊
+        </pre>
+        <p>
+            At (k₁A, k₂, k₃, k₄B) = (6, 1, 11, 6) the bare rate
+            factors as −(X−1)(X−2)(X−3): a low stable state at
+            X = 1, an unstable separatrix at X = 2, a high stable
+            state at X = 3. The last term is the only coupling to
+            the Barkley substrate — the wave activator, where it
+            exceeds u_θ, boosts the autocatalysis rate locally.
+            This is honest chemistry; the wave species pushes the
+            X precursor through the autocatalytic step.
+        </p>
+
+        <p>
+            <strong>What you see.</strong> A passing wave front
+            kicks X past the unstable separatrix in cells it
+            visits enough times. Those cells then fall into the
+            high attractor at X = 3 <em>on their own</em>, with no
+            further input. ε is set proportional to X (high X →
+            unexcitable), so those regions stop firing.
+            Press <strong>Kill wave</strong>: spiral disappears,
+            X stays high, walls remain. No latch anywhere — just
+            mass-action.
+        </p>
+
+        <div class="tri">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>1 · u (live Barkley wave)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="xCanvas"></canvas>
+                <figcaption>2 · X (Schlögl species, 1…3)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="epsCanvas"></canvas>
+                <figcaption>3 · ε (refractoriness; from X)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseed">↻ Reseed spiral</button>
+            <button id="killWave">☠ Kill wave</button>
+            <button id="healChem">↻ Reset chemistry</button>
+            <button id="kick">⚡ Kick</button>
+        </div>
+
+        <div class="controls">
+            <label for="drive">drive D (u → X autocatalysis gain)</label>
+            <input id="drive" type="range" min="0.5" max="12.0" value="4.0" step="0.1" />
+            <span id="driveV" class="value">4.0</span>
+
+            <label for="uThr">u threshold u_θ (front-only)</label>
+            <input id="uThr" type="range" min="0.20" max="1.20" value="0.80" step="0.01" />
+            <span id="uThrV" class="value">0.80</span>
+
+            <label for="killEps">wall ε (high-X ε ceiling)</label>
+            <input id="killEps" type="range" min="0.03" max="0.30" value="0.05" step="0.005" />
+            <span id="killEpsV" class="value">0.050</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="16" value="6" step="1" />
+            <span id="speedV" class="value">6</span>
+        </div>
+
+        <p class="muted">
+            The middle panel is the <em>X</em> concentration,
+            rendered from X = 1 (dark, low stable) to X = 3
+            (bright, high stable). Cells past X = 2 (the
+            separatrix) will fall into the high attractor with no
+            further forcing. The third panel is ε, computed
+            linearly from X. There is no per-operator state
+            anywhere in the chain — the "memory" of having been
+            walled is the chemical attractor X is sitting in.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (tissue)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">excited frac</span> <span class="v" id="rEx">0.000</span></div>
+            <div><span class="k">X &gt; 2 frac (committed)</span> <span class="v" id="rHf">0.0%</span></div>
+            <div><span class="k">&lt;X&gt;</span> <span class="v" id="rXm">1.000</span></div>
+            <div><span class="k">&lt;ε&gt;</span> <span class="v" id="rEm">0.020</span></div>
+            <div><span class="k">X_low / X_high</span> <span class="v" id="rXR">1 / 3</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            <em>Same R27 phenomenology, from real chemistry.</em>
+            R27 needed a new operator with its own persistent
+            state (<code>latch_field</code>) to make walls
+            irreversible. R27′ does it with no new state at all —
+            irreversibility falls out of the rate law itself,
+            because the system has two stable fixed points with a
+            finite barrier between them. The chemical attractor
+            does the holding.
+        </p>
+        <p>
+            CLI verified at default settings (drive 4.0, u_θ 0.8,
+            kill_eps 0.05): X_high fraction plateaus at ~11% of
+            the grid while the spiral runs steady at excited ≈
+            0.20. Wave killed at step 12000 (tissue time 240):
+            X_high_frac stays at 0.112 indefinitely; ε_mean stays
+            at 0.0234. The slight drop in &lt;X&gt; (1.292 →
+            1.225) after the kill is honest mass-action — cells
+            that were partway up the rising side of the
+            separatrix when the wave died fall back to X = 1,
+            while committed cells stay at X = 3.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> Watch the spiral lay
+                down its X footprint. The bright cells in panel 2
+                are ones that have crossed the separatrix; once
+                bright, they stay bright with zero forcing.
+            </li>
+            <li>
+                <strong>Kill wave.</strong> Zeros u and v. The
+                wave vanishes. X does not. The high-X regions
+                hold because the Schlögl rate law has a stable
+                fixed point at X = 3 — no comparator needed.
+            </li>
+            <li>
+                <strong>Reseed spiral after killing.</strong> The
+                fresh spiral has to live inside the
+                pre-existing high-X regions, which it did not
+                build and cannot easily erase.
+            </li>
+            <li>
+                <strong>Reset chemistry.</strong> Slams every
+                cell's X back to 1. This is the chemical analogue
+                of "heal walls" — you can do it from outside, but
+                the substrate itself has no path back.
+            </li>
+            <li>
+                <strong>Lower drive below 2.</strong> The wave no
+                longer pushes any cell past the separatrix. X
+                stays at 1 everywhere; the system is just an
+                excitable medium again. The bistability is real
+                but you need real forcing to access it.
+            </li>
+            <li>
+                <strong>Raise u_θ above 1.0.</strong> Only the
+                rare cells where the wave peaks above 1.0
+                accumulate drive. Walls get sparser. The
+                threshold is a real chemical-coupling parameter,
+                not a Schmitt knob.
+            </li>
+        </ol>
+
+        <h2>what changed vs. R27</h2>
+        <p>
+            R27 chain: Barkley → integrate_field(u) → latch_field
+            → modulate_parameter → ε. The <code>latch_field</code>
+            held the wall state.
+        </p>
+        <p>
+            R27′ chain: Barkley → <strong>react_field(X,
+            schlögl + drive)</strong> → modulate_parameter → ε.
+            The Schlögl attractor holds the wall state. No
+            comparator, no Schmitt trigger, no per-operator
+            persistent state.
+        </p>
+        <p>
+            One new operator (<code>react_field</code>) added in
+            this pivot — and it makes a class of operators that
+            were doing chemistry by fiat (<code>latch_field</code>
+            in particular) obsolete. The alphabet contracts where
+            it was bloated.
+        </p>
+
+        <p class="muted">
+            Source:
+            <a href="https://github.com/AntonBursch/life">github.com/AntonBursch/life</a>.
+            Code MIT, prose CC-BY-4.0.
+        </p>
+
+        <script type="module" src="main.js"></script>
+    </body>
+</html>

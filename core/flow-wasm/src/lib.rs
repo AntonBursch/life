@@ -4,7 +4,7 @@
 //! JS/Rust interop and exposes the diffusion field in a form a Canvas
 //! renderer can consume cheaply.
 
-use flow::{excitable_gate, phase_to_scalar_field, bulk_gate, gradient_magnitude, gradient_field, advect_by, threshold_event, integrate_field, modulate_parameter, latch_field, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
+use flow::{excitable_gate, phase_to_scalar_field, bulk_gate, gradient_magnitude, gradient_field, advect_by, threshold_event, integrate_field, modulate_parameter, latch_field, react_field, schlogl_rate, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -4060,4 +4060,173 @@ impl WasmCoupledR29 {
     pub fn wall_local_field(&self) -> Vec<f64> { self.wall_local.clone() }
     pub fn transmitted_field(&self) -> Vec<f64> { self.transmitted.clone() }
     pub fn eps_field(&self) -> Vec<f64> { self.eps_field.clone() }
+}
+
+
+// =====================================================================
+// WasmCoupledR27Prime -- Bistable death. Phase E, first rung.
+//
+// Substrate-honest rebuild of R27. See life/THESIS.md.
+//
+// R27 used latch_field (Schmitt trigger) to make walls irreversible.
+// Nature has no Schmitt triggers. Nature has bistable reaction
+// networks. R27' replaces the latch with the Schlogl model:
+//
+//   A + 2X -> 3X         (autocatalysis)
+//   X -> B               (decay)
+//
+//   dX/dt = k1A*X^2 - k2*X^3 - k3*X + k4B  +  D * [u - u_thr]+
+//
+// With (k1A, k2, k3, k4B) = (6, 1, 11, 6) the bare rate factors
+// as -(X-1)(X-2)(X-3): low stable at X=1, separatrix at X=2,
+// high stable at X=3. The drive term is real chemistry too --
+// the wave activator above threshold boosts the autocatalysis
+// rate locally. No comparators, no free knobs.
+//
+// Chain:
+//   1. Barkley.step_with_eps_field(eps_field)
+//   2. react_field(X, schlogl + wave_drive)     -- NEW Phase E op
+//   3. modulate_parameter(X-X_low, ...) -> eps  -- input is now a
+//      real species concentration, not a memory label.
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR27Prime {
+    tissue: Barkley2D,
+    species_x: Vec<f64>,
+    x_shifted: Vec<f64>,
+    eps_field: Vec<f64>,
+    base_eps: f64,
+    kill_eps: f64,
+    k1a: f64,
+    k2: f64,
+    k3: f64,
+    k4b: f64,
+    x_low: f64,
+    x_high: f64,
+    u_thr: f64,
+    drive: f64,
+    dt_step: f64,
+    width: usize,
+    height: usize,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR27Prime {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        diffusion: f64,
+        a: f64,
+        b: f64,
+        base_eps: f64,
+        dx: f64,
+        dt: f64,
+        kill_eps: f64,
+        u_thr: f64,
+        drive: f64,
+    ) -> Result<WasmCoupledR27Prime, JsError> {
+        let tissue = Barkley2D::new(width, height, diffusion, a, b, base_eps, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let n = width * height;
+        let x_low = 1.0_f64;
+        let x_high = 3.0_f64;
+        Ok(Self {
+            tissue,
+            species_x: vec![x_low; n],
+            x_shifted: vec![0.0; n],
+            eps_field: vec![base_eps; n],
+            base_eps,
+            kill_eps,
+            k1a: 6.0, k2: 1.0, k3: 11.0, k4b: 6.0,
+            x_low, x_high,
+            u_thr,
+            drive,
+            dt_step: dt,
+            width,
+            height,
+        })
+    }
+
+    pub fn step(&mut self) {
+        self.tissue.step_with_eps_field(&self.eps_field, self.base_eps);
+
+        let u = self.tissue.u();
+        let bare = schlogl_rate(self.k1a, self.k2, self.k3, self.k4b);
+        let n = self.species_x.len();
+        for k in 0..n {
+            let drive_k = self.drive * (u[k] - self.u_thr).max(0.0);
+            let mut one = [self.species_x[k]];
+            let _ = react_field(
+                &mut one,
+                |x| bare(x) + drive_k,
+                self.dt_step,
+            );
+            self.species_x[k] = one[0];
+        }
+
+        let gain = (self.kill_eps - self.base_eps) / (self.x_high - self.x_low);
+        for k in 0..n {
+            self.x_shifted[k] = self.species_x[k] - self.x_low;
+        }
+        let _ = modulate_parameter(
+            &self.x_shifted,
+            self.base_eps, gain,
+            self.base_eps, self.kill_eps,
+            &mut self.eps_field,
+        );
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_spiral(&mut self) { self.tissue.seed_spiral(); }
+
+    pub fn kick(&mut self, cx: usize, cy: usize, radius: usize, amplitude: f64) {
+        self.tissue.kick(cx, cy, radius, amplitude);
+    }
+
+    /// Kill the wave (zero u and v) but leave the X field intact.
+    /// Headline R27' demo: structure outlives process, from real
+    /// chemistry. Every cell past X=2 falls into the high attractor
+    /// on its own and stays there with no input.
+    pub fn reset_tissue(&mut self) { self.tissue.reset(); }
+
+    /// Reset chemistry: X back to its low stable state everywhere.
+    pub fn reset_chemistry(&mut self) {
+        for v in &mut self.species_x { *v = self.x_low; }
+        for v in &mut self.eps_field { *v = self.base_eps; }
+    }
+
+    pub fn set_drive(&mut self, d: f64) { self.drive = d.max(0.0); }
+    pub fn set_u_thr(&mut self, t: f64) { self.u_thr = t.clamp(0.0, 1.5); }
+    pub fn set_kill_eps(&mut self, e: f64) { self.kill_eps = e.max(self.base_eps); }
+    pub fn r27p_set_a(&mut self, a: f64) { self.tissue.set_a(a); }
+    pub fn r27p_set_b(&mut self, b: f64) { self.tissue.set_b(b); }
+
+    pub fn r27p_width(&self) -> usize { self.width }
+    pub fn r27p_height(&self) -> usize { self.height }
+    pub fn r27p_time(&self) -> f64 { self.tissue.time() }
+    pub fn r27p_x_low(&self) -> f64 { self.x_low }
+    pub fn r27p_x_high(&self) -> f64 { self.x_high }
+
+    pub fn r27p_excited_fraction(&self) -> f64 { self.tissue.excited_fraction() }
+    pub fn x_mean(&self) -> f64 {
+        self.species_x.iter().sum::<f64>() / self.species_x.len() as f64
+    }
+    /// Fraction of cells past the unstable separatrix (X > 2).
+    /// These cells will fall into the high attractor on their own
+    /// with zero forcing -- chemical irreversibility.
+    pub fn x_high_fraction(&self) -> f64 {
+        let n = self.species_x.len() as f64;
+        self.species_x.iter().filter(|&&x| x > 2.0).count() as f64 / n
+    }
+    pub fn r27p_eps_mean(&self) -> f64 {
+        self.eps_field.iter().sum::<f64>() / self.eps_field.len() as f64
+    }
+
+    pub fn r27p_u_field(&self) -> Vec<f64> { self.tissue.u().to_vec() }
+    pub fn x_field(&self) -> Vec<f64> { self.species_x.clone() }
+    pub fn r27p_eps_field(&self) -> Vec<f64> { self.eps_field.clone() }
 }
