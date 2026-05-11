@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R12 — Territory shapes sync · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .triple {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 12px;
+                margin: 12px 0;
+            }
+            .triple figure { margin: 0; }
+            .triple canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .triple figcaption {
+                font-size: 0.85em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r11-breathing/">← R11</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R12 — Territory shapes sync</h1>
+        <p class="muted">
+            A third composition. A Cahn-Hilliard concentration field
+            (R8) phase-separates into ± domains. A new operator,
+            <code>bulk_gate</code>, says: where the territory is
+            deep inside one phase (|φ| large), turn coupling on;
+            where it's near the wall (|φ| ≈ 0), turn coupling off.
+            The phase layer (R9) then runs on that coupling map.
+            Each territorial bulk becomes its own Kuramoto cluster.
+            The walls of the territory are <strong>walls of
+            synchrony</strong>. As CH coarsens, sync coarsens with
+            it.
+        </p>
+
+        <div class="triple">
+            <figure>
+                <canvas id="phiCanvas"></canvas>
+                <figcaption>Territory <em>φ</em> (R8)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="gateCanvas"></canvas>
+                <figcaption>Coupling field <em>K</em>(x,t)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="phaseCanvas"></canvas>
+                <figcaption>Phase field <em>θ</em> (R9)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseed">↻ Reseed phases</button>
+            <button id="reterritory">↻ New territory</button>
+        </div>
+
+        <div class="controls">
+            <label for="kbulk">bulk coupling K<sub>bulk</sub></label>
+            <input id="kbulk" type="range" min="0" max="12" value="8" step="0.1" />
+            <span id="kbulkV" class="value">8.0</span>
+
+            <label for="kwall">wall coupling K<sub>wall</sub></label>
+            <input id="kwall" type="range" min="0" max="2" value="0.05" step="0.05" />
+            <span id="kwallV" class="value">0.05</span>
+
+            <label for="hwidth">half-width (wall thickness)</label>
+            <input id="hwidth" type="range" min="0.1" max="0.9" value="0.5" step="0.05" />
+            <span id="hwidthV" class="value">0.50</span>
+
+            <label for="sval">frequency spread σ</label>
+            <input id="sval" type="range" min="0" max="0.4" value="0.1" step="0.01" />
+            <span id="svalV" class="value">0.10</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="80" value="20" step="1" />
+            <span id="speedV" class="value">20</span>
+        </div>
+
+        <p class="muted">
+            Watch the left canvas: red and blue phase-separated
+            territory slowly coarsens. Middle canvas: bright
+            wherever |φ| is large, dark along the walls — coupling
+            islands tracing the bulks. Right canvas: each coupling
+            island grows its own monochrome blob, with the walls
+            showing as colour seams. The territorial geometry is
+            literally the geometry of synchrony.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (territory)</span> <span class="v" id="rTt">0</span></div>
+            <div>
+                <span class="k">order parameter r (global)</span>
+                <span class="v" id="rR">0.000</span>
+            </div>
+            <div>
+                <span class="k">r in φ&gt;0 bulk</span>
+                <span class="v" id="rRpos">0.000</span>
+            </div>
+            <div>
+                <span class="k">r in φ&lt;0 bulk</span>
+                <span class="v" id="rRneg">0.000</span>
+            </div>
+            <div>
+                <span class="k">cross-domain align</span>
+                <span class="v" id="rCross">0.000</span>
+            </div>
+            <div>
+                <span class="k">local correlation</span>
+                <span class="v" id="rLoc">0.000</span>
+            </div>
+            <div>
+                <span class="k">regime</span>
+                <span class="v" id="rRegime">cold</span>
+            </div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            R10 used <code>excitable_gate</code> on a Barkley
+            activator. R11 used <code>phase_to_scalar_field</code>
+            in the opposite direction. R12 is a third recipe in the
+            same kitchen: a new operator,
+            <code>bulk_gate</code>, applied to a substrate pair the
+            other two rungs never touched (CH ↔ Kuramoto). The
+            operator is sign-blind by design — both bulk phases of a
+            phase-separated field play the same structural role,
+            and only the wall is special. With three operators and
+            four substrates, the alphabet is now big enough to
+            produce qualitatively different phenomena by swapping
+            pieces in and out.
+        </p>
+
+        <p>
+            And the phenomenon itself is interesting: a single
+            global Kuramoto population, but split by territory into
+            independent sync clusters, with the walls of the
+            territory acting as phase domain walls. That is the
+            shape of segmentation. In a cortical-binding reading it
+            looks like "feature regions bound by phase-locking,
+            background suppressed by uncoupling, boundaries enforced
+            by the territory map". In a CV reading it looks like
+            "pixels inside an object share a phase; pixels outside
+            do not; the boundary is where the territory map crosses
+            zero". Same math, two readings.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>K<sub>bulk</sub> = 8 (default).</strong>
+                Wait for the territory to coarsen for ~20s. The
+                phase canvas develops two large monochrome regions,
+                roughly matching the φ regions, with mismatched
+                colours.
+            </li>
+            <li>
+                <strong>K<sub>bulk</sub> → 0.</strong> The
+                composition collapses to R9 with no coupling. Phase
+                canvas becomes pure rainbow noise even after the
+                territory coarsens. Sync requires the substrate.
+            </li>
+            <li>
+                <strong>K<sub>wall</sub> → 1.</strong> Now the
+                walls are also coupled. The two domains can talk
+                across the wall and slowly align. Cross-domain
+                alignment climbs. The wall is no longer a sync
+                wall.
+            </li>
+            <li>
+                <strong>Half-width → 0.9.</strong> Almost the whole
+                canvas counts as "wall". K-field is mostly
+                K<sub>wall</sub>. Sync vanishes. The composition
+                only works when the bulk is sufficiently bulky.
+            </li>
+            <li>
+                <strong>σ → 0.3.</strong> Natural frequencies are
+                spread wider. Even at high K<sub>bulk</sub>, each
+                bulk's r stops short of 1. The composition inherits
+                R9's phase boundary.
+            </li>
+            <li>
+                <strong>Reseed phases.</strong> Territory and K-map
+                are untouched; only the initial phases change.
+                Watch the same territorial sync map re-emerge from
+                different colours.
+            </li>
+        </ol>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>Walls are sync walls.</strong> The
+                boundaries on the phase canvas line up almost
+                exactly with the zero-crossings on the territory
+                canvas. The composition built a segmentation from
+                two scalar fields and one operator.
+            </li>
+            <li>
+                <strong>Independent bulks.</strong> The "r in φ>0
+                bulk" and "r in φ&lt;0 bulk" readouts both climb,
+                while r (global) stays well below them. Two
+                Kuramoto populations sharing one canvas.
+            </li>
+            <li>
+                <strong>Sync follows territory.</strong> When two
+                small domains merge into one large domain, the
+                phases inside renegotiate to a single blob colour.
+                The merger of CH bubbles drags sync along with it.
+            </li>
+            <li>
+                <strong>Three timescales, again.</strong> CH
+                coarsening is the slowest. Phase locking is faster.
+                Within each cell, the natural frequency drift is
+                the fastest. The composition lives in the window
+                where those three timescales agree.
+            </li>
+        </ul>
+
+        <h2>why this rung matters</h2>
+        <p>
+            With R10, R11 and R12 in place, three of the four
+            possible arrows between R7/R8/R9/R4 have been written.
+            More importantly, the operator menu has grown from one
+            (<code>excitable_gate</code>) to three. The recipe for
+            future rungs is now clear: pick two substrates, pick a
+            coupling operator that converts the state of one into a
+            per-cell parameter of the other, run them on the same
+            grid. Most of the time the heavy lifting is in the
+            substrate; the operator is a few lines of arithmetic.
+            That is why the ladder composes so cheaply.
+        </p>
+
+        <p class="muted">
+            Math + code: <code>flow::CahnHilliard2D</code>,
+            <code>flow::Kuramoto2D::step_with_coupling_field</code>,
+            and the new <code>flow::bulk_gate</code>. Next sentence
+            in the alphabet: a different pair, a different operator.
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

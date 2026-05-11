@@ -109,6 +109,50 @@ pub fn phase_to_scalar_field(
     Ok(())
 }
 
+/// Map a scalar field whose interesting structure is its
+/// *magnitude* (e.g. a phase-separated Cahn-Hilliard order
+/// parameter sitting near +/-1 in the bulk and near 0 at the
+/// walls) into a per-cell coupling. Cells where `|scalar|` is
+/// well above `half_width` get `k_bulk`; cells where `|scalar|`
+/// is well below `half_width` get `k_wall`; the transition is a
+/// smoothstep of half-width `sharpness` around `half_width`.
+///
+/// This is the sign-blind cousin of `excitable_gate`. It lets a
+/// territory substrate (where the sign of `scalar` distinguishes
+/// two phases but both phases are equally "bulk") create
+/// coupling islands whose walls are uncoupled.
+pub fn bulk_gate(
+    scalar: &[f64],
+    k_wall: f64,
+    k_bulk: f64,
+    half_width: f64,
+    sharpness: f64,
+    out: &mut [f64],
+) -> Result<(), CouplingError> {
+    if scalar.len() != out.len() {
+        return Err(CouplingError::SizeMismatch);
+    }
+    if !(sharpness > 0.0) {
+        return Err(CouplingError::BadParam { name: "sharpness", value: sharpness });
+    }
+    if !(half_width >= 0.0) {
+        return Err(CouplingError::BadParam { name: "half_width", value: half_width });
+    }
+    if k_wall < 0.0 {
+        return Err(CouplingError::BadParam { name: "k_wall", value: k_wall });
+    }
+    if k_bulk < 0.0 {
+        return Err(CouplingError::BadParam { name: "k_bulk", value: k_bulk });
+    }
+    let lo = half_width - sharpness;
+    let hi = half_width + sharpness;
+    for (s, o) in scalar.iter().zip(out.iter_mut()) {
+        let g = smoothstep(lo, hi, s.abs());
+        *o = k_wall + (k_bulk - k_wall) * g;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,6 +229,42 @@ mod tests {
         let mut out = vec![0.0; 4];
         assert_eq!(
             phase_to_scalar_field(&theta, 0.0, 1.0, &mut out),
+            Err(CouplingError::SizeMismatch)
+        );
+    }
+
+    #[test]
+    fn bulk_gate_extremes_and_walls() {
+        // |scalar|=1 is well above half_width=0.5 -> k_bulk.
+        // |scalar|=0 is well below -> k_wall. sign should not matter.
+        let scalar = vec![-1.0, 1.0, 0.0, -0.0001];
+        let mut out = vec![0.0; 4];
+        bulk_gate(&scalar, 0.1, 5.0, 0.5, 0.05, &mut out).unwrap();
+        assert!((out[0] - 5.0).abs() < 1e-9);
+        assert!((out[1] - 5.0).abs() < 1e-9);
+        assert!((out[2] - 0.1).abs() < 1e-9);
+        assert!((out[3] - 0.1).abs() < 1e-9);
+    }
+
+    #[test]
+    fn bulk_gate_rejects_bad_inputs() {
+        let s = vec![0.0; 4];
+        let mut o = vec![0.0; 4];
+        assert!(matches!(
+            bulk_gate(&s, 0.0, 1.0, 0.5, 0.0, &mut o),
+            Err(CouplingError::BadParam { name: "sharpness", .. })
+        ));
+        assert!(matches!(
+            bulk_gate(&s, 0.0, 1.0, -0.1, 0.05, &mut o),
+            Err(CouplingError::BadParam { name: "half_width", .. })
+        ));
+        assert!(matches!(
+            bulk_gate(&s, -1.0, 1.0, 0.5, 0.05, &mut o),
+            Err(CouplingError::BadParam { name: "k_wall", .. })
+        ));
+        let mut wrong = vec![0.0; 3];
+        assert_eq!(
+            bulk_gate(&s, 0.0, 1.0, 0.5, 0.05, &mut wrong),
             Err(CouplingError::SizeMismatch)
         );
     }

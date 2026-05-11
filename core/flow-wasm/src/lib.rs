@@ -4,7 +4,7 @@
 //! JS/Rust interop and exposes the diffusion field in a form a Canvas
 //! renderer can consume cheaply.
 
-use flow::{excitable_gate, phase_to_scalar_field, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
+use flow::{excitable_gate, phase_to_scalar_field, bulk_gate, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -997,4 +997,183 @@ impl WasmCoupledR11 {
     pub fn feed_field(&self) -> Vec<f64> { self.feed_field.clone() }
     pub fn v_field(&self) -> Vec<f64> { self.chem.v().to_vec() }
     pub fn u_field(&self) -> Vec<f64> { self.chem.u().to_vec() }
+}
+
+// =====================================================================
+// R12: territory shapes sync. A Cahn-Hilliard domain field phi gates a
+// Kuramoto coupling field through the *same* operator R10 used
+// (`excitable_gate`), with threshold = 0. Cells inside positive
+// domains see high coupling and lock together. Cells inside negative
+// domains do the same independently. The domain walls are sync walls.
+// As the territory coarsens, the sync map coarsens with it.
+//
+// Demonstrates operator reuse: one composition operator + two new
+// substrate slots = new phenomenon, no new core math.
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR12 {
+    territory: CahnHilliard2D,
+    phase: Kuramoto2D,
+    k_field: Vec<f64>,
+    k_wall: f64,
+    k_bulk: f64,
+    half_width: f64,
+    sharpness: f64,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR12 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        // Cahn-Hilliard params
+        mobility: f64,
+        kappa: f64,
+        dx: f64,
+        dt_territory: f64,
+        // Kuramoto params
+        dt_phase: f64,
+        // Bulk-gate params: walls (|phi|<half_width) -> k_wall,
+        // bulks (|phi|>half_width) -> k_bulk.
+        k_wall: f64,
+        k_bulk: f64,
+        half_width: f64,
+        sharpness: f64,
+    ) -> Result<WasmCoupledR12, JsError> {
+        let territory = CahnHilliard2D::new(width, height, mobility, kappa, dx, dt_territory)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let phase = Kuramoto2D::new(width, height, 0.0, dt_phase)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(Self {
+            territory,
+            phase,
+            k_field: vec![0.0; width * height],
+            k_wall,
+            k_bulk,
+            half_width,
+            sharpness,
+        })
+    }
+
+    pub fn step(&mut self) {
+        self.territory.step();
+        let _ = bulk_gate(
+            self.territory.c(),
+            self.k_wall,
+            self.k_bulk,
+            self.half_width,
+            self.sharpness,
+            &mut self.k_field,
+        );
+        let _ = self.phase.step_with_coupling_field(&self.k_field);
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_noise(&mut self, amplitude: f64, mean: f64, seed: u32) {
+        self.territory.seed_noise(amplitude, mean, seed as u64);
+    }
+    pub fn reset_territory(&mut self) { self.territory.reset(); }
+
+    pub fn set_natural_frequencies(&mut self, sigma: f64, seed: u32) {
+        self.phase.set_natural_frequencies(sigma, seed as u64);
+    }
+    pub fn randomise_phases(&mut self, seed: u32) {
+        self.phase.randomise_phases(seed as u64);
+    }
+    pub fn set_k_wall(&mut self, v: f64) { if v >= 0.0 { self.k_wall = v; } }
+    pub fn set_k_bulk(&mut self, v: f64) { if v >= 0.0 { self.k_bulk = v; } }
+    pub fn set_half_width(&mut self, v: f64) { if v >= 0.0 { self.half_width = v; } }
+    pub fn set_sharpness(&mut self, v: f64) { if v > 0.0 { self.sharpness = v; } }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.territory.width() }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.territory.height() }
+    #[wasm_bindgen(getter)]
+    pub fn territory_time(&self) -> f64 { self.territory.time() }
+    #[wasm_bindgen(getter)]
+    pub fn phase_time(&self) -> f64 { self.phase.time() }
+    #[wasm_bindgen(getter)]
+    pub fn order_parameter(&self) -> f64 { self.phase.order_parameter() }
+    #[wasm_bindgen(getter)]
+    pub fn k_wall(&self) -> f64 { self.k_wall }
+    #[wasm_bindgen(getter)]
+    pub fn k_bulk(&self) -> f64 { self.k_bulk }
+    #[wasm_bindgen(getter)]
+    pub fn half_width(&self) -> f64 { self.half_width }
+
+    /// Mean cos(theta_i - theta_j) over 4-neighbour pairs.
+    pub fn local_correlation(&self) -> f64 {
+        let w = self.phase.width();
+        let h = self.phase.height();
+        let theta = self.phase.theta();
+        let mut acc = 0.0;
+        let mut count = 0usize;
+        for j in 0..h {
+            let jp = if j == h - 1 { 0 } else { j + 1 };
+            for i in 0..w {
+                let ip = if i == w - 1 { 0 } else { i + 1 };
+                let t0 = theta[j * w + i];
+                acc += (theta[j * w + ip] - t0).cos();
+                acc += (theta[jp * w + i] - t0).cos();
+                count += 2;
+            }
+        }
+        if count == 0 { 0.0 } else { acc / (count as f64) }
+    }
+
+    /// Per-domain order parameter: |mean(e^{i theta})| computed
+    /// separately over phi > 0 and phi < 0. When the territory has
+    /// coarsened, each domain is its own Kuramoto population and
+    /// these climb independently while the global r stays small.
+    pub fn order_parameter_pos(&self) -> f64 {
+        let phi = self.territory.c();
+        let theta = self.phase.theta();
+        let mut cs = 0.0_f64;
+        let mut sn = 0.0_f64;
+        let mut n = 0_usize;
+        for (p, t) in phi.iter().zip(theta.iter()) {
+            if *p > 0.0 { cs += t.cos(); sn += t.sin(); n += 1; }
+        }
+        if n == 0 { 0.0 } else { (cs * cs + sn * sn).sqrt() / (n as f64) }
+    }
+
+    pub fn order_parameter_neg(&self) -> f64 {
+        let phi = self.territory.c();
+        let theta = self.phase.theta();
+        let mut cs = 0.0_f64;
+        let mut sn = 0.0_f64;
+        let mut n = 0_usize;
+        for (p, t) in phi.iter().zip(theta.iter()) {
+            if *p < 0.0 { cs += t.cos(); sn += t.sin(); n += 1; }
+        }
+        if n == 0 { 0.0 } else { (cs * cs + sn * sn).sqrt() / (n as f64) }
+    }
+
+    /// Cosine of the phase difference between the two domains'
+    /// mean phases. Near +1 => both domains accidentally aligned;
+    /// near -1 => phase-opposed; near 0 => independent, which is
+    /// the headline regime of this rung.
+    pub fn cross_domain_alignment(&self) -> f64 {
+        let phi = self.territory.c();
+        let theta = self.phase.theta();
+        let (mut cp, mut sp, mut np_) = (0.0_f64, 0.0_f64, 0_usize);
+        let (mut cn, mut sn, mut nn_) = (0.0_f64, 0.0_f64, 0_usize);
+        for (p, t) in phi.iter().zip(theta.iter()) {
+            if *p > 0.0 { cp += t.cos(); sp += t.sin(); np_ += 1; }
+            else if *p < 0.0 { cn += t.cos(); sn += t.sin(); nn_ += 1; }
+        }
+        if np_ == 0 || nn_ == 0 { return 0.0; }
+        let mean_p = sp.atan2(cp);
+        let mean_n = sn.atan2(cn);
+        (mean_p - mean_n).cos()
+    }
+
+    pub fn phi_field(&self) -> Vec<f64> { self.territory.c().to_vec() }
+    pub fn theta_field(&self) -> Vec<f64> { self.phase.theta().to_vec() }
+    pub fn k_coupling_field(&self) -> Vec<f64> { self.k_field.clone() }
 }

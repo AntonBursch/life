@@ -20,7 +20,7 @@ pub use advection::AdvectionDiffusion1D;
 pub use barkley::Barkley2D;
 pub use cahn_hilliard::CahnHilliard2D;
 pub use convection::Convection2D;
-pub use coupling::{excitable_gate, phase_to_scalar_field, CouplingError};
+pub use coupling::{excitable_gate, phase_to_scalar_field, bulk_gate, CouplingError};
 pub use diffusion::{Diffusion1D, BoundaryCondition};
 pub use gray_scott::GrayScott2D;
 pub use kuramoto::Kuramoto2D;
