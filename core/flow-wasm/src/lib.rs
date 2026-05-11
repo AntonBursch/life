@@ -4,7 +4,7 @@
 //! JS/Rust interop and exposes the diffusion field in a form a Canvas
 //! renderer can consume cheaply.
 
-use flow::{excitable_gate, phase_to_scalar_field, bulk_gate, gradient_magnitude, gradient_field, advect_by, threshold_event, integrate_field, modulate_parameter, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
+use flow::{excitable_gate, phase_to_scalar_field, bulk_gate, gradient_magnitude, gradient_field, advect_by, threshold_event, integrate_field, modulate_parameter, latch_field, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -3411,4 +3411,159 @@ impl WasmCoupledR26 {
             .map(|&m| if m > self.threshold { 1.0 } else { 0.0 })
             .collect()
     }
+}
+
+// =====================================================================
+// WasmCoupledR27 -- Latched death. Phase D, first rung.
+//
+// First operator with persistent state of its own: latch_field.
+// In R26 walls only persisted because the wave kept writing them;
+// kill the wave and the walls dissolve. In R27 a per-cell Schmitt
+// trigger holds wall state: once a cell crosses set_threshold it
+// becomes a wall and (with reset_threshold = 0) remains one forever,
+// regardless of subsequent activity. The structure outlives the
+// process that built it.
+//
+// Chain:
+//   Barkley.step_with_eps_field(eps)
+//   integrate_field(u, memory, dt, leak)            -- R19 op
+//   latch_field(wall_state, memory, set, reset)     -- NEW op (latch category)
+//   modulate_parameter(wall_state, ...) -> eps      -- R24 op
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR27 {
+    tissue: Barkley2D,
+    memory: Vec<f64>,
+    wall_state: Vec<f64>,
+    eps_field: Vec<f64>,
+    base_eps: f64,
+    kill_eps: f64,
+    set_threshold: f64,
+    reset_threshold: f64,
+    leak: f64,
+    dt_step: f64,
+    width: usize,
+    height: usize,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR27 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        diffusion: f64,
+        a: f64,
+        b: f64,
+        base_eps: f64,
+        dx: f64,
+        dt: f64,
+        kill_eps: f64,
+        set_threshold: f64,
+        reset_threshold: f64,
+        leak: f64,
+    ) -> Result<WasmCoupledR27, JsError> {
+        let tissue = Barkley2D::new(width, height, diffusion, a, b, base_eps, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let n = width * height;
+        Ok(Self {
+            tissue,
+            memory: vec![0.0; n],
+            wall_state: vec![0.0; n],
+            eps_field: vec![base_eps; n],
+            base_eps,
+            kill_eps,
+            set_threshold,
+            reset_threshold,
+            leak,
+            dt_step: dt,
+            width,
+            height,
+        })
+    }
+
+    pub fn step(&mut self) {
+        self.tissue.step_with_eps_field(&self.eps_field, self.base_eps);
+        let u = self.tissue.u();
+        let _ = integrate_field(u, &mut self.memory, self.dt_step, self.leak);
+        let _ = latch_field(
+            &mut self.wall_state,
+            &self.memory,
+            self.set_threshold,
+            self.reset_threshold,
+        );
+        let _ = modulate_parameter(
+            &self.wall_state,
+            self.base_eps,
+            self.kill_eps - self.base_eps,
+            self.base_eps,
+            self.kill_eps,
+            &mut self.eps_field,
+        );
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_spiral(&mut self) { self.tissue.seed_spiral(); }
+
+    pub fn kick(&mut self, cx: usize, cy: usize, radius: usize, amplitude: f64) {
+        self.tissue.kick(cx, cy, radius, amplitude);
+    }
+
+    /// Kill the wave (zero u and v) but leave wall_state intact.
+    /// This is the headline R27 demo: structure outlives process.
+    pub fn reset_tissue(&mut self) { self.tissue.reset(); }
+
+    /// "Heal" walls: clear both memory and the latch. Explicit reset,
+    /// independent of any input.
+    pub fn reset_walls(&mut self) {
+        for v in &mut self.memory { *v = 0.0; }
+        for v in &mut self.wall_state { *v = 0.0; }
+        for v in &mut self.eps_field { *v = self.base_eps; }
+    }
+
+    pub fn set_set_threshold(&mut self, t: f64) {
+        self.set_threshold = t.max(self.reset_threshold);
+    }
+    pub fn set_reset_threshold(&mut self, t: f64) {
+        self.reset_threshold = t.min(self.set_threshold).max(0.0);
+    }
+    pub fn set_kill_eps(&mut self, e: f64) { self.kill_eps = e.max(self.base_eps); }
+    pub fn set_leak(&mut self, l: f64) { self.leak = l.max(0.0); }
+    pub fn set_a(&mut self, a: f64) { self.tissue.set_a(a); }
+    pub fn set_b(&mut self, b: f64) { self.tissue.set_b(b); }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.width }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.height }
+    #[wasm_bindgen(getter)]
+    pub fn tissue_time(&self) -> f64 { self.tissue.time() }
+
+    pub fn u_mean(&self) -> f64 {
+        let u = self.tissue.u();
+        u.iter().sum::<f64>() / u.len() as f64
+    }
+    pub fn excited_fraction(&self) -> f64 { self.tissue.excited_fraction() }
+    pub fn memory_max(&self) -> f64 {
+        self.memory.iter().cloned().fold(f64::NEG_INFINITY, f64::max).max(0.0)
+    }
+    pub fn memory_mean(&self) -> f64 {
+        self.memory.iter().sum::<f64>() / self.memory.len() as f64
+    }
+    /// Fraction of cells currently latched into the wall state.
+    /// Persistent: even after the wave is killed, this stays put.
+    pub fn wall_fraction(&self) -> f64 {
+        self.wall_state.iter().sum::<f64>() / self.wall_state.len() as f64
+    }
+    pub fn eps_mean(&self) -> f64 {
+        self.eps_field.iter().sum::<f64>() / self.eps_field.len() as f64
+    }
+
+    pub fn u_field(&self) -> Vec<f64> { self.tissue.u().to_vec() }
+    pub fn memory_field(&self) -> Vec<f64> { self.memory.clone() }
+    pub fn wall_field(&self) -> Vec<f64> { self.wall_state.clone() }
+    pub fn eps_field(&self) -> Vec<f64> { self.eps_field.clone() }
 }

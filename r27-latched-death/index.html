@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R27 — Latched death · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .tri {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .tri figure { margin: 0; }
+            .tri canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .tri figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .tri { grid-template-columns: repeat(1, 1fr); }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r26-self-bounding/">← R26</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R27 — Latched death</h1>
+        <p class="muted">
+            Phase D opener. R26 walls only persisted because the
+            wave kept writing them; kill the wave and they
+            dissolve. R27 introduces the first operator with its
+            own persistent state: <code>latch_field</code>, a
+            per-cell Schmitt trigger. When memory crosses
+            <em>set_threshold</em> the cell flips into the wall
+            state; with <em>reset_threshold = 0</em> it stays
+            walled forever, regardless of what happens to the
+            wave that put it there. Press <strong>Kill wave</strong>
+            and watch: the spiral disappears, the walls do not.
+        </p>
+
+        <div class="tri">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>1 · u (live wave)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="memCanvas"></canvas>
+                <figcaption>2 · memory = ∫ u (leaky)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="wallCanvas"></canvas>
+                <figcaption>3 · wall_state (latched)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseed">↻ Reseed spiral</button>
+            <button id="killWave">☠ Kill wave</button>
+            <button id="healWalls">↻ Heal walls</button>
+            <button id="kick">⚡ Kick</button>
+        </div>
+
+        <div class="controls">
+            <label for="setThr">set threshold (latch on)</label>
+            <input id="setThr" type="range" min="0.20" max="3.0" value="1.00" step="0.05" />
+            <span id="setThrV" class="value">1.00</span>
+
+            <label for="resetThr">reset threshold (latch off)</label>
+            <input id="resetThr" type="range" min="0.00" max="2.0" value="0.00" step="0.05" />
+            <span id="resetThrV" class="value">0.00</span>
+
+            <label for="killEps">wall ε (kill_eps)</label>
+            <input id="killEps" type="range" min="0.03" max="0.30" value="0.05" step="0.005" />
+            <span id="killEpsV" class="value">0.050</span>
+
+            <label for="leak">memory leak (1/τ)</label>
+            <input id="leak" type="range" min="0.05" max="2.0" value="0.50" step="0.05" />
+            <span id="leakV" class="value">0.50</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="16" value="6" step="1" />
+            <span id="speedV" class="value">6</span>
+        </div>
+
+        <p class="muted">
+            The third panel is the <em>latched</em> wall state,
+            not the live memory. It only flips ON when memory
+            crosses <em>set</em> and only flips OFF when memory
+            drops below <em>reset</em>. With reset at 0 the latch
+            is a one-way trap: once a cell is walled, no input
+            can release it. <strong>Kill wave</strong> zeros u
+            and v; the walls do not move.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (tissue)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">excited frac</span> <span class="v" id="rEx">0.000</span></div>
+            <div><span class="k">&lt;u&gt;</span> <span class="v" id="rUm">0.000</span></div>
+            <div><span class="k">wall fraction</span> <span class="v" id="rWf">0.0%</span></div>
+            <div><span class="k">&lt;memory&gt;</span> <span class="v" id="rMm">0.000</span></div>
+            <div><span class="k">max memory</span> <span class="v" id="rMx">0.000</span></div>
+            <div><span class="k">&lt;ε&gt;</span> <span class="v" id="rEm">0.020</span></div>
+            <div><span class="k">τ = 1/leak</span> <span class="v" id="rTau">2.0</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            <em>Some things are not erasable.</em> Every operator
+            until now has been a function of its current inputs
+            alone. <code>latch_field</code> is the first operator
+            whose output depends on its inputs <em>and</em> its
+            own persistent state. That single change unlocks
+            irreversibility: the system can carry the fact of
+            having been somewhere even after every other trace
+            of that visit has decayed away.
+        </p>
+        <p>
+            In R26 wave and structure were inseparable — kill
+            the process and the structure goes with it. In R27
+            wave and structure are decoupled: the spiral is the
+            <em>builder</em>, the latched wall_state is the
+            <em>artifact</em>. The artifact outlives its maker.
+            That is the minimum signature of biological
+            structure — you can die and your bones remain.
+        </p>
+        <p>
+            CLI verified at set 1.0, reset 0.0, kill_eps 0.05,
+            leak 0.5: latched walls plateau at ~28% of the grid
+            while the spiral runs steady at excited ≈ 0.17. Wave
+            killed at step 12000 (tissue time 240): wall_frac
+            stays at 0.276 indefinitely. The R26-equivalent
+            control (no latch, memory drives ε directly) shows
+            walls at ~14% during the run, decaying to 0 within
+            ~120 t.u. of the kill. Same alphabet plus one new
+            operator, qualitatively new behaviour.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> Watch walls accumulate
+                in the spiral's most-visited regions. They
+                plateau (the spiral has a bounded footprint) but
+                never erode.
+            </li>
+            <li>
+                <strong>Kill wave.</strong> Zeros u and v. The
+                wave vanishes; memory decays toward zero within
+                ~10 t.u.; <em>the wall_state field does not
+                change at all</em>. The structure is fully
+                decoupled from the process now that the latch
+                holds it.
+            </li>
+            <li>
+                <strong>Reseed spiral after killing the wave.</strong>
+                The fresh spiral has to live inside the
+                pre-existing latched walls, which the new wave
+                did not build. History from the previous wave is
+                still steering this one.
+            </li>
+            <li>
+                <strong>Heal walls.</strong> Clears memory
+                <em>and</em> the latch. Explicit reset — the only
+                way to undo a one-way latch is from outside the
+                substrate.
+            </li>
+            <li>
+                <strong>Raise reset threshold above 0.</strong>
+                Re-introduces erasability. With reset = 0.2 and
+                leak = 0.5, walls fade within ~10 t.u. of the
+                wave dying. Tune reset to set the system's
+                "forgetting rate".
+            </li>
+            <li>
+                <strong>Raise set threshold to 2.0.</strong>
+                Memory rarely reaches that level. Walls barely
+                form. The latch is still there, just very
+                selective about what counts as commitment.
+            </li>
+        </ol>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

@@ -400,6 +400,52 @@ pub fn modulate_parameter(
     Ok(())
 }
 
+/// Per-cell hysteretic latch (Schmitt trigger). Each cell of
+/// `state` is updated in place from `input` according to:
+///   - if input[k] > set_threshold   -> state[k] = 1.0
+///   - if input[k] < reset_threshold -> state[k] = 0.0
+///   - otherwise                     -> state[k] unchanged
+///
+/// `set_threshold` must be greater than or equal to
+/// `reset_threshold`. When they are equal this reduces to a plain
+/// sign-of-(input - threshold) discretiser. When they differ, the
+/// operator has its own state: a cell that has been "set" remains
+/// set until input drops below `reset_threshold`, even if input
+/// fluctuates between the two thresholds. The operator carries
+/// memory of its own across calls -- this is the minimum required
+/// for irreversibility / death-as-state.
+///
+/// Operator alphabet category: "latch" (stateful discretiser; new
+/// in Phase D). This is the first operator whose output is not a
+/// function of its current input alone -- it is a function of the
+/// input *and* the operator's persistent state.
+pub fn latch_field(
+    state: &mut [f64],
+    input: &[f64],
+    set_threshold: f64,
+    reset_threshold: f64,
+) -> Result<(), CouplingError> {
+    if state.len() != input.len() {
+        return Err(CouplingError::SizeMismatch);
+    }
+    if !(set_threshold >= reset_threshold) {
+        return Err(CouplingError::BadParam {
+            name: "set_threshold",
+            value: set_threshold,
+        });
+    }
+    for k in 0..state.len() {
+        let x = input[k];
+        if x > set_threshold {
+            state[k] = 1.0;
+        } else if x < reset_threshold {
+            state[k] = 0.0;
+        }
+        // Otherwise: hold (cell remains in whatever state it was in).
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

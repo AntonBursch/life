@@ -28,6 +28,7 @@ members = [
     "r24-scar-tissue",
     "r25-homeostasis",
     "r26-self-bounding",
+    "r27-latched-death",
     "server",
     "flow-wasm",
 ]
