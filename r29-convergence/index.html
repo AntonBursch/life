@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R29 — Convergence · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .quad {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .quad figure { margin: 0; }
+            .quad canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .quad figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 1000px) {
+                .quad { grid-template-columns: repeat(2, 1fr); }
+            }
+            @media (max-width: 520px) {
+                .quad { grid-template-columns: 1fr; }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r28-communication/">← R28</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R29 — Convergence</h1>
+        <p class="muted">
+            Phase D, third rung. Still no new operator. Same
+            composition as R28 — <code>latch</code> ∘
+            <code>advect</code> ∘ <code>latch</code> — but the
+            velocity field is now position-dependent: left half
+            flows right at <em>+v</em>, right half flows left at
+            <em>-v</em>. Two spirals seeded at opposite ends.
+            Each builds wall_local in its own footprint; those
+            walls are carried <em>inward</em> and latched
+            permanently into transmitted. The two channels
+            converge at the midline. Communication composes —
+            two independent channels through the same medium
+            OR into the same accumulator. The midline carries
+            a superposition of histories from sources that may
+            no longer exist.
+        </p>
+
+        <div class="quad">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>1 · u (two waves)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="memCanvas"></canvas>
+                <figcaption>2 · memory (leaky ∫u)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="wallLocalCanvas"></canvas>
+                <figcaption>3 · wall_local (latched here)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="transmittedCanvas"></canvas>
+                <figcaption>4 · transmitted (converging →←)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseed">↻ Reseed both sources</button>
+            <button id="killWave">☠ Kill both waves</button>
+            <button id="healWalls">↻ Clear walls</button>
+            <button id="sparkLeft">⚡ Spark left</button>
+            <button id="sparkRight">⚡ Spark right</button>
+            <button id="sparkCenter">⚡ Spark centre</button>
+        </div>
+
+        <div class="controls">
+            <label for="velocity">channel speed |v| (cells / t.u.)</label>
+            <input id="velocity" type="range" min="0.0" max="5.0" value="1.0" step="0.1" />
+            <span id="velocityV" class="value">1.0</span>
+
+            <label for="setThr">set threshold (local latch on)</label>
+            <input id="setThr" type="range" min="0.2" max="3.0" value="1.0" step="0.05" />
+            <span id="setThrV" class="value">1.00</span>
+
+            <label for="resetThr">reset threshold (local latch off)</label>
+            <input id="resetThr" type="range" min="0.0" max="2.0" value="0.0" step="0.05" />
+            <span id="resetThrV" class="value">0.00</span>
+
+            <label for="killEps">wall ε (kill_eps)</label>
+            <input id="killEps" type="range" min="0.025" max="0.30" value="0.04" step="0.005" />
+            <span id="killEpsV" class="value">0.040</span>
+
+            <label for="leak">memory leak (1/τ)</label>
+            <input id="leak" type="range" min="0.05" max="2.0" value="0.50" step="0.05" />
+            <span id="leakV" class="value">0.50</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="16" value="6" step="1" />
+            <span id="speedV" class="value">6</span>
+        </div>
+
+        <p class="muted">
+            Panel 4 is the headline. Watch the curtain of walls
+            advance from each side until the two fronts meet at
+            the midline. After that, the midline is permanently
+            written by both sources. Kill the waves — the
+            curtain keeps closing.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (tissue)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">excited frac</span> <span class="v" id="rEx">0.000</span></div>
+            <div><span class="k">wall_local</span> <span class="v" id="rWl">0.0%</span></div>
+            <div><span class="k">transmitted</span> <span class="v" id="rTr">0.0%</span></div>
+            <div><span class="k">wall_local (midline)</span> <span class="v" id="rWlM">0.0%</span></div>
+            <div><span class="k">transmitted (midline)</span> <span class="v" id="rTrM">0.0%</span></div>
+            <div><span class="k">&lt;memory&gt;</span> <span class="v" id="rMm">0.000</span></div>
+            <div><span class="k">&lt;ε&gt;</span> <span class="v" id="rEm">0.020</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            <em>Communication composes.</em> Two channels
+            through the same medium do not interfere
+            structurally; they OR into one accumulator. R29 is
+            R28 with a non-uniform velocity field — the same
+            three operators in the same order, on the same
+            substrate. Yet the qualitative behaviour is new:
+            the midline carries a superposition of histories.
+            Cells at the midline have never been visited by
+            either wave, and yet they bear permanent walls
+            built from messages that arrived simultaneously
+            from both directions.
+        </p>
+        <p>
+            CLI verified, 128×96, |v|=2 cells/t.u., dt=0.02.
+            Both spirals die at t≈10 from kill_eps feedback
+            (their own walls eat them). At t=30 the midline
+            band (i ∈ [58,70]) shows wall_local = 0% but
+            transmitted = 36.5%. From t=30 onward the midline
+            stays at 36.5% forever. The waves lived for ten
+            time units; their record is permanent.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> Two sources, |v|=1.0.
+                Watch panel 4: two curtains advance inward and
+                meet at the midline. After that the midline is
+                permanently written by both.
+            </li>
+            <li>
+                <strong>Kill both waves.</strong> Local walls
+                stop growing. The transmitted curtain keeps
+                closing — messages already in flight continue
+                to arrive.
+            </li>
+            <li>
+                <strong>Velocity = 0.</strong> Disables both
+                channels. Walls stay where they are built.
+                Confirm: midline never writes.
+            </li>
+            <li>
+                <strong>Velocity = 5.</strong> The curtains
+                close in seconds; everything gets ε-killed.
+                High-bandwidth channels can flood the medium.
+            </li>
+            <li>
+                <strong>Spark left only, then spark right
+                later.</strong> Stagger the conversation. The
+                midline shows which arrived first by where
+                walls landed; the slower channel writes only
+                where the faster has not.
+            </li>
+            <li>
+                <strong>Clear walls and spark centre.</strong>
+                A source at the midline sends walls outward in
+                both directions — the velocity field carries
+                them away from the centre. Same operator
+                composition, opposite topology of information
+                flow.
+            </li>
+        </ol>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

@@ -3797,3 +3797,267 @@ impl WasmCoupledR28 {
     pub fn transmitted_field(&self) -> Vec<f64> { self.transmitted.clone() }
     pub fn eps_field(&self) -> Vec<f64> { self.eps_field.clone() }
 }
+
+// =====================================================================
+// WasmCoupledR29 -- Convergence. Phase D, third rung.
+//
+// Still no new operator. Same composition as R28 -- latch_field
+// composed with advect_by composed with latch_field -- but the
+// velocity field is position-dependent:
+//
+//   vx[i,j] = +v   if i <  W/2     (left half flows rightward)
+//   vx[i,j] = -v   if i >= W/2     (right half flows leftward)
+//
+// Two spirals are seeded at opposite ends. Each spiral builds
+// wall_local in its footprint. Those local walls are advected
+// *inward* and latched permanently into transmitted. The two
+// channels converge: cells near the midline receive walls that
+// arrived from both directions. Kill both waves and the centre
+// remains permanently walled by messages from sources that no
+// longer exist -- a permanent record of having been spoken to
+// from both sides.
+//
+// Communication composes. Two channels through the same medium
+// do not interfere structurally; they OR into the same
+// transmitted-latch field. The midline carries a superposition
+// of histories.
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR29 {
+    tissue: Barkley2D,
+    memory: Vec<f64>,
+    wall_local: Vec<f64>,
+    transmitted: Vec<f64>,
+    advect_tmp: Vec<f64>,
+    vx: Vec<f64>,
+    vy: Vec<f64>,
+    eps_field: Vec<f64>,
+    base_eps: f64,
+    kill_eps: f64,
+    set_local: f64,
+    reset_local: f64,
+    leak: f64,
+    dx_step: f64,
+    dt_step: f64,
+    velocity: f64,
+    width: usize,
+    height: usize,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR29 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        diffusion: f64,
+        a: f64,
+        b: f64,
+        base_eps: f64,
+        dx: f64,
+        dt: f64,
+        kill_eps: f64,
+        set_local: f64,
+        reset_local: f64,
+        leak: f64,
+        velocity: f64,
+    ) -> Result<WasmCoupledR29, JsError> {
+        let tissue = Barkley2D::new(width, height, diffusion, a, b, base_eps, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let n = width * height;
+        let mut s = Self {
+            tissue,
+            memory: vec![0.0; n],
+            wall_local: vec![0.0; n],
+            transmitted: vec![0.0; n],
+            advect_tmp: vec![0.0; n],
+            vx: vec![0.0; n],
+            vy: vec![0.0; n],
+            eps_field: vec![base_eps; n],
+            base_eps,
+            kill_eps,
+            set_local,
+            reset_local,
+            leak,
+            dx_step: dx,
+            dt_step: dt,
+            velocity,
+            width,
+            height,
+        };
+        s.rebuild_velocity_field();
+        Ok(s)
+    }
+
+    fn rebuild_velocity_field(&mut self) {
+        let w = self.width;
+        let h = self.height;
+        let mid = w / 2;
+        for j in 0..h {
+            let row = j * w;
+            for i in 0..w {
+                // Left half flows right (+v), right half flows left (-v).
+                // Cells AT the midline get -v so they sample slightly
+                // to the right -- which is the symmetric mirror of
+                // the cell just before the midline sampling slightly
+                // to its left. The midline is the collision boundary.
+                let v = if i < mid { self.velocity } else { -self.velocity };
+                self.vx[row + i] = v;
+                self.vy[row + i] = 0.0;
+            }
+        }
+    }
+
+    pub fn step(&mut self) {
+        self.tissue.step_with_eps_field(&self.eps_field, self.base_eps);
+        let u = self.tissue.u();
+        let _ = integrate_field(u, &mut self.memory, self.dt_step, self.leak);
+        let _ = latch_field(
+            &mut self.wall_local,
+            &self.memory,
+            self.set_local,
+            self.reset_local,
+        );
+        let _ = advect_by(
+            &self.transmitted,
+            &self.vx,
+            &self.vy,
+            self.width,
+            self.height,
+            self.dx_step,
+            self.dt_step,
+            &mut self.advect_tmp,
+        );
+        std::mem::swap(&mut self.transmitted, &mut self.advect_tmp);
+        let _ = latch_field(
+            &mut self.transmitted,
+            &self.wall_local,
+            0.5,
+            -1.0,
+        );
+        let _ = modulate_parameter(
+            &self.transmitted,
+            self.base_eps,
+            self.kill_eps - self.base_eps,
+            self.base_eps,
+            self.kill_eps,
+            &mut self.eps_field,
+        );
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_spiral(&mut self) { self.tissue.seed_spiral(); }
+
+    pub fn kick(&mut self, cx: usize, cy: usize, radius: usize, amplitude: f64) {
+        self.tissue.kick(cx, cy, radius, amplitude);
+    }
+
+    /// Seed two spirals, one on each side, facing each other.
+    /// Done as two kicks; the substrate's excitable dynamics turn
+    /// localised excitations into self-sustaining spirals after a
+    /// few hundred steps.
+    pub fn seed_two_sources(&mut self) {
+        self.tissue.reset();
+        let w = self.width;
+        let h = self.height;
+        let r = ((w.min(h) as f64) * 0.06) as usize + 2;
+        self.tissue.kick(w / 5,        h / 2, r, 1.0);
+        self.tissue.kick(4 * w / 5,    h / 2, r, 1.0);
+    }
+
+    pub fn reset_tissue(&mut self) { self.tissue.reset(); }
+
+    pub fn reset_walls(&mut self) {
+        for v in &mut self.memory { *v = 0.0; }
+        for v in &mut self.wall_local { *v = 0.0; }
+        for v in &mut self.transmitted { *v = 0.0; }
+        for v in &mut self.advect_tmp { *v = 0.0; }
+        for v in &mut self.eps_field { *v = self.base_eps; }
+    }
+
+    pub fn set_velocity(&mut self, v: f64) {
+        self.velocity = v;
+        self.rebuild_velocity_field();
+    }
+    pub fn set_set_local(&mut self, t: f64) {
+        self.set_local = t.max(self.reset_local);
+    }
+    pub fn set_reset_local(&mut self, t: f64) {
+        self.reset_local = t.min(self.set_local).max(0.0);
+    }
+    pub fn set_kill_eps(&mut self, e: f64) { self.kill_eps = e.max(self.base_eps); }
+    pub fn set_leak(&mut self, l: f64) { self.leak = l.max(0.0); }
+    pub fn set_a(&mut self, a: f64) { self.tissue.set_a(a); }
+    pub fn set_b(&mut self, b: f64) { self.tissue.set_b(b); }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.width }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.height }
+    #[wasm_bindgen(getter)]
+    pub fn tissue_time(&self) -> f64 { self.tissue.time() }
+
+    pub fn excited_fraction(&self) -> f64 { self.tissue.excited_fraction() }
+    pub fn memory_mean(&self) -> f64 {
+        self.memory.iter().sum::<f64>() / self.memory.len() as f64
+    }
+    pub fn wall_local_fraction(&self) -> f64 {
+        self.wall_local.iter().sum::<f64>() / self.wall_local.len() as f64
+    }
+    pub fn transmitted_fraction(&self) -> f64 {
+        let n_on = self.transmitted.iter().filter(|&&x| x > 0.5).count();
+        n_on as f64 / self.transmitted.len() as f64
+    }
+    /// Fraction of midline cells (a vertical strip of width ~10% W
+    /// centred at W/2) whose transmitted field is on. This is the
+    /// "collision zone" -- walls arriving here originated from both
+    /// the left and the right channels.
+    pub fn midline_transmitted_fraction(&self) -> f64 {
+        let w = self.width;
+        let h = self.height;
+        let mid = w / 2;
+        let half_band = (w / 20).max(1);
+        let lo = mid.saturating_sub(half_band);
+        let hi = (mid + half_band).min(w);
+        let mut on = 0usize;
+        let mut total = 0usize;
+        for j in 0..h {
+            let row = j * w;
+            for i in lo..hi {
+                total += 1;
+                if self.transmitted[row + i] > 0.5 { on += 1; }
+            }
+        }
+        if total == 0 { 0.0 } else { on as f64 / total as f64 }
+    }
+    pub fn midline_wall_local_fraction(&self) -> f64 {
+        let w = self.width;
+        let h = self.height;
+        let mid = w / 2;
+        let half_band = (w / 20).max(1);
+        let lo = mid.saturating_sub(half_band);
+        let hi = (mid + half_band).min(w);
+        let mut on = 0usize;
+        let mut total = 0usize;
+        for j in 0..h {
+            let row = j * w;
+            for i in lo..hi {
+                total += 1;
+                if self.wall_local[row + i] > 0.5 { on += 1; }
+            }
+        }
+        if total == 0 { 0.0 } else { on as f64 / total as f64 }
+    }
+    pub fn eps_mean(&self) -> f64 {
+        self.eps_field.iter().sum::<f64>() / self.eps_field.len() as f64
+    }
+
+    pub fn u_field(&self) -> Vec<f64> { self.tissue.u().to_vec() }
+    pub fn memory_field(&self) -> Vec<f64> { self.memory.clone() }
+    pub fn wall_local_field(&self) -> Vec<f64> { self.wall_local.clone() }
+    pub fn transmitted_field(&self) -> Vec<f64> { self.transmitted.clone() }
+    pub fn eps_field(&self) -> Vec<f64> { self.eps_field.clone() }
+}

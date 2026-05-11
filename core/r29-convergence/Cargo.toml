@@ -1,0 +1,11 @@
+[package]
+name = "r29-convergence"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "r29-convergence"
+path = "src/main.rs"
+
+[dependencies]
+flow = { path = "../flow" }

@@ -30,6 +30,7 @@ members = [
     "r26-self-bounding",
     "r27-latched-death",
     "r28-communication",
+    "r29-convergence",
     "server",
     "flow-wasm",
 ]
