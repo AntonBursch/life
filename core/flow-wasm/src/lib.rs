@@ -1177,3 +1177,173 @@ impl WasmCoupledR12 {
     pub fn theta_field(&self) -> Vec<f64> { self.phase.theta().to_vec() }
     pub fn k_coupling_field(&self) -> Vec<f64> { self.k_field.clone() }
 }
+
+// =====================================================================
+// R13: spikes seed pattern. A Barkley excitable layer (R7) drives the
+// per-cell Gray-Scott feed (R4) through `excitable_gate`. Where the
+// excitable medium is at rest, the feed is starved -> chemistry decays.
+// Where a spiral wave fires, the feed jumps -> chemistry grows in the
+// wake of the wave. Spirals trace patterns onto a chemical canvas.
+//
+// This rung makes the missing R7 -> R4 arrow and is the third use of
+// `excitable_gate` (after R10 and the unused-here template). One
+// operator, three different jobs: confirms the alphabet thesis.
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR13 {
+    excitable: Barkley2D,
+    chem: GrayScott2D,
+    feed_field: Vec<f64>,
+    f_lo: f64,
+    f_hi: f64,
+    threshold: f64,
+    sharpness: f64,
+    bark_substeps: u32,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR13 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        // Barkley params
+        bark_diffusion: f64,
+        bark_a: f64,
+        bark_b: f64,
+        bark_eps: f64,
+        bark_dx: f64,
+        bark_dt: f64,
+        // Gray-Scott params (feed comes from gate; kill is fixed)
+        gs_du: f64,
+        gs_dv: f64,
+        gs_kill: f64,
+        gs_dx: f64,
+        gs_dt: f64,
+        // Excitable-gate params: u below threshold -> f_lo, above -> f_hi
+        f_lo: f64,
+        f_hi: f64,
+        threshold: f64,
+        sharpness: f64,
+        // Number of Barkley substeps per Gray-Scott step (balances dts)
+        bark_substeps: u32,
+    ) -> Result<WasmCoupledR13, JsError> {
+        let excitable = Barkley2D::new(width, height, bark_diffusion, bark_a, bark_b, bark_eps, bark_dx, bark_dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let f_seed = 0.5 * (f_lo + f_hi);
+        let chem = GrayScott2D::new(width, height, gs_du, gs_dv, f_seed, gs_kill, gs_dx, gs_dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(Self {
+            excitable,
+            chem,
+            feed_field: vec![f_seed; width * height],
+            f_lo,
+            f_hi,
+            threshold,
+            sharpness,
+            bark_substeps: bark_substeps.max(1),
+        })
+    }
+
+    pub fn step(&mut self) {
+        for _ in 0..self.bark_substeps {
+            self.excitable.step();
+        }
+        let _ = excitable_gate(
+            self.excitable.u(),
+            self.f_lo,
+            self.f_hi,
+            self.threshold,
+            self.sharpness,
+            &mut self.feed_field,
+        );
+        let _ = self.chem.step_with_feed_field(&self.feed_field);
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_spiral(&mut self) { self.excitable.seed_spiral(); }
+    pub fn reset_excitable(&mut self) { self.excitable.reset(); }
+    pub fn seed_blob(&mut self, cx: usize, cy: usize, r: usize) {
+        self.chem.seed_blob(cx, cy, r);
+    }
+    pub fn reset_chem(&mut self) { self.chem.reset(); }
+
+    pub fn set_f_lo(&mut self, v: f64) { if v >= 0.0 { self.f_lo = v; } }
+    pub fn set_f_hi(&mut self, v: f64) { if v >= 0.0 { self.f_hi = v; } }
+    pub fn set_threshold(&mut self, v: f64) { self.threshold = v; }
+    pub fn set_sharpness(&mut self, v: f64) { if v > 0.0 { self.sharpness = v; } }
+    pub fn set_kill(&mut self, v: f64) { self.chem.set_kill(v); }
+    pub fn set_bark_substeps(&mut self, n: u32) { self.bark_substeps = n.max(1); }
+    pub fn set_bark_a(&mut self, v: f64) { self.excitable.set_a(v); }
+    pub fn set_bark_b(&mut self, v: f64) { self.excitable.set_b(v); }
+    pub fn set_bark_eps(&mut self, v: f64) { self.excitable.set_eps(v); }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.chem.width() }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.chem.height() }
+    #[wasm_bindgen(getter)]
+    pub fn excitable_time(&self) -> f64 { self.excitable.time() }
+    #[wasm_bindgen(getter)]
+    pub fn chem_time(&self) -> f64 { self.chem.time() }
+    #[wasm_bindgen(getter)]
+    pub fn f_lo(&self) -> f64 { self.f_lo }
+    #[wasm_bindgen(getter)]
+    pub fn f_hi(&self) -> f64 { self.f_hi }
+    #[wasm_bindgen(getter)]
+    pub fn threshold(&self) -> f64 { self.threshold }
+
+    /// Mean chemistry density. Useful as a "is anything alive" needle.
+    pub fn mean_v(&self) -> f64 {
+        let v = self.chem.v();
+        v.iter().sum::<f64>() / (v.len() as f64)
+    }
+
+    /// Fraction of cells with V > 0.2 — the "pattern coverage" needle.
+    pub fn v_coverage(&self) -> f64 {
+        let v = self.chem.v();
+        v.iter().filter(|x| **x > 0.2).count() as f64 / (v.len() as f64)
+    }
+
+    /// Fraction of cells currently spiking (excitable.u above threshold).
+    pub fn firing_fraction(&self) -> f64 {
+        let u = self.excitable.u();
+        let t = self.threshold;
+        u.iter().filter(|x| **x > t).count() as f64 / (u.len() as f64)
+    }
+
+    /// Spatial correlation of the feed_field with the chemistry V.
+    /// When chemistry tracks the wave (grows where wave just fired and
+    /// hasn't yet decayed), this is positive. When it lags far behind,
+    /// it falls. Pearson correlation, 4-byte-cheap.
+    pub fn wave_pattern_correlation(&self) -> f64 {
+        let f = &self.feed_field;
+        let v = self.chem.v();
+        let n = f.len() as f64;
+        if n < 2.0 { return 0.0; }
+        let fm: f64 = f.iter().sum::<f64>() / n;
+        let vm: f64 = v.iter().sum::<f64>() / n;
+        let mut num = 0.0_f64;
+        let mut df2 = 0.0_f64;
+        let mut dv2 = 0.0_f64;
+        for (fi, vi) in f.iter().zip(v.iter()) {
+            let df = fi - fm;
+            let dv = vi - vm;
+            num += df * dv;
+            df2 += df * df;
+            dv2 += dv * dv;
+        }
+        let denom = (df2 * dv2).sqrt();
+        if denom < 1e-12 { 0.0 } else { num / denom }
+    }
+
+    pub fn u_field(&self) -> Vec<f64> { self.excitable.u().to_vec() }
+    pub fn v_excitable_field(&self) -> Vec<f64> { self.excitable.v().to_vec() }
+    pub fn feed_field(&self) -> Vec<f64> { self.feed_field.clone() }
+    pub fn chem_v_field(&self) -> Vec<f64> { self.chem.v().to_vec() }
+    pub fn chem_u_field(&self) -> Vec<f64> { self.chem.u().to_vec() }
+}
+

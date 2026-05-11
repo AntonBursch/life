@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R13 — Spikes seed pattern · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .triple {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 12px;
+                margin: 12px 0;
+            }
+            .triple figure { margin: 0; }
+            .triple canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .triple figcaption {
+                font-size: 0.85em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r12-territory-sync/">← R12</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R13 — Spikes seed pattern</h1>
+        <p class="muted">
+            A fourth composition. A Barkley excitable layer (R7)
+            runs spiral waves. Wherever the activator <em>u</em> is
+            firing, <code>excitable_gate</code> raises the per-cell
+            Gray-Scott feed (R4) into the mitosis regime; wherever
+            it's at rest, the feed sits in the stable-spots regime.
+            Chemistry is alive everywhere — but it
+            <strong>blooms in the wake of the wave</strong>. The
+            spiral writes onto the chemical canvas.
+        </p>
+
+        <div class="triple">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>Excitable <em>u</em> (R7)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="feedCanvas"></canvas>
+                <figcaption>Feed field <em>F</em>(x,t)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="vCanvas"></canvas>
+                <figcaption>Chemistry <em>V</em> (R4)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseedSpiral">↻ Reseed spiral</button>
+            <button id="reseedChem">↻ Reseed chemistry</button>
+        </div>
+
+        <div class="controls">
+            <label for="flo">resting feed F<sub>lo</sub></label>
+            <input id="flo" type="range" min="0" max="0.08" value="0.040" step="0.001" />
+            <span id="floV" class="value">0.040</span>
+
+            <label for="fhi">firing feed F<sub>hi</sub></label>
+            <input id="fhi" type="range" min="0" max="0.10" value="0.062" step="0.001" />
+            <span id="fhiV" class="value">0.062</span>
+
+            <label for="kill">kill rate k</label>
+            <input id="kill" type="range" min="0.04" max="0.075" value="0.062" step="0.001" />
+            <span id="killV" class="value">0.062</span>
+
+            <label for="thr">spike threshold</label>
+            <input id="thr" type="range" min="0.1" max="0.9" value="0.4" step="0.05" />
+            <span id="thrV" class="value">0.40</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="20" value="4" step="1" />
+            <span id="speedV" class="value">4</span>
+        </div>
+
+        <p class="muted">
+            Left: blue Barkley spiral, with bright fronts where the
+            wave is firing. Middle: feed map — bright wherever the
+            wave is currently passing (high feed), dim elsewhere
+            (resting feed). Right: Gray-Scott V — slowly accumulates
+            into a textured pattern, more vigorous in regions the
+            wave keeps revisiting. The spiral is the <em>writer</em>;
+            the chemistry is the <em>memory</em>.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (chemistry)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">firing fraction</span> <span class="v" id="rFire">0%</span></div>
+            <div><span class="k">mean V</span> <span class="v" id="rMeanV">0.000</span></div>
+            <div><span class="k">pattern coverage</span> <span class="v" id="rCov">0%</span></div>
+            <div><span class="k">corr(feed, V)</span> <span class="v" id="rCorr">+0.000</span></div>
+            <div><span class="k">regime</span> <span class="v" id="rRegime">cold</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            R10 used <code>excitable_gate</code> on Kuramoto. R12
+            used <code>bulk_gate</code> on Kuramoto. R13 returns to
+            <code>excitable_gate</code> but points it at a
+            different downstream substrate: Gray-Scott chemistry. One
+            operator, two completely different effects, depending on
+            what it's wired to. That is the alphabet thesis: the
+            operators are real primitives, not one-off glue.
+        </p>
+
+        <p>
+            And the phenomenon itself is the cleanest two-timescale
+            story so far. Barkley moves fast — a wave crosses the
+            grid in seconds. Gray-Scott moves slow — pattern grows
+            over minutes. The composition is a writer/memory pair:
+            the fast layer paints transient feed pulses; the slow
+            layer integrates them into a persistent texture. In a CV
+            reading: a fast event detector (spiral as "motion
+            detected") triggers a slow accumulator (chemistry as
+            "heatmap of activity").
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> Wait ~30s. The spiral runs
+                steadily; chemistry slowly fills regions the spiral
+                sweeps. After a minute, V coverage reaches 30–40%.
+            </li>
+            <li>
+                <strong>F<sub>hi</sub> → 0.040.</strong> Now firing
+                cells get the same feed as resting cells. The
+                composition collapses: pattern grows uniformly,
+                ignoring the spiral. The wave is decoupled from the
+                memory.
+            </li>
+            <li>
+                <strong>F<sub>lo</sub> → 0.</strong> Resting cells
+                are starved. Pattern only persists in regions
+                recently swept by the wave; once the wave wanders
+                off, that region decays. The chemistry becomes a
+                fading trail behind the front.
+            </li>
+            <li>
+                <strong>kill → 0.075.</strong> Chemistry decays
+                faster. Even with vigorous firing, V can't accumulate.
+                The memory has too short a half-life to keep up
+                with the writer.
+            </li>
+            <li>
+                <strong>spike threshold → 0.8.</strong> Only the
+                very tip of the wave front qualifies as "firing".
+                The feed pulse is now a thin contour following the
+                wave. Pattern grows along narrow tracks.
+            </li>
+            <li>
+                <strong>Reseed chemistry.</strong> Wipe V, leave
+                spiral and feed running. Watch the same pattern
+                regrow — the spiral is the deterministic source.
+            </li>
+        </ol>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>Wave wakes, not wave fronts.</strong>
+                Pattern doesn't hug the wave front; it grows
+                <em>behind</em> it, where the feed pulse has had
+                time to feed the chemistry but the wave has moved
+                on. Two timescales, written on top of each other.
+            </li>
+            <li>
+                <strong>The arm of the spiral as a brush.</strong>
+                As the spiral arm rotates, it sweeps the same region
+                periodically. That region accumulates more pattern
+                than the centre or the far corners.
+            </li>
+            <li>
+                <strong>Operator reuse.</strong>
+                <code>excitable_gate</code> already gated Kuramoto
+                coupling in R10. Here the same five lines of code
+                gate a different parameter of a different substrate
+                — and the resulting phenomenon looks nothing like
+                R10. The operator is the noun; the substrate is the
+                verb.
+            </li>
+            <li>
+                <strong>Memory vs. event.</strong> The spiral itself
+                is unchanged; reset chemistry and the spiral keeps
+                going, ready to repaint. The memory layer doesn't
+                feed back. (That would be R14.)
+            </li>
+        </ul>
+
+        <h2>why this rung matters</h2>
+        <p>
+            The R7 → R4 arrow is now drawn. Of the four substrates
+            in the alphabet (R4, R7, R8, R9), every one now appears
+            on at least one side of a composition. The operator
+            menu has three entries (<code>excitable_gate</code>,
+            <code>phase_to_scalar_field</code>,
+            <code>bulk_gate</code>), and each operator now appears
+            in at least two compositions. The ladder is no longer a
+            line of one-offs; it's a small grammar.
+        </p>
+
+        <p class="muted">
+            Math + code: <code>flow::Barkley2D</code>,
+            <code>flow::GrayScott2D::step_with_feed_field</code>,
+            and the existing <code>flow::excitable_gate</code>
+            applied to a new downstream parameter.
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>
