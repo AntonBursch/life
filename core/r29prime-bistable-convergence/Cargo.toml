@@ -1,0 +1,12 @@
+[package]
+name = "r29prime-bistable-convergence"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "r29prime-bistable-convergence"
+path = "src/main.rs"
+
+[dependencies]
+flow = { path = "../flow" }

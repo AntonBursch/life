@@ -234,6 +234,13 @@
                     >No new operator — same composition as R28 (react then advect), applied to an honest substrate. Schlögl species X from R27′ transported by uniform velocity field via the existing <code>advect_by</code>. Wave commits cells on the left; advection carries X mass rightward; downstream cells receive inflow that lifts them past the X=2 separatrix and they commit on their own via local Schlögl dynamics. CLI 128×96 v=2.5 rightward: by t=30, X_high_R≈0.23; by t=400 the spiral has self-extinguished from globally raised ε but X_high_R is still climbing past 0.45, driven entirely by reactant inflow plus local rate law. Communication is mass-action plus transport, no latches, no advected labels</span
                 >
             </li>
+            <li>
+                <a href="r29prime-bistable-convergence/">R29′ — Bistable convergence</a> ·
+                <em class="muted" style="color:#2c7a3d;">[Phase E · substrate-honest rebuild of R29]</em> ·
+                <span class="muted"
+                    >No new operator — same composition as R28′ (react then advect) with position-dependent velocity (left half flows right, right half flows left) and two source reservoirs holding the Schlögl species X clamped at X=3 (honest Dirichlet BC representing continuous metabolic supply). Streams from both sides meet at the midline; CLI 128×96 |v|=2 inward: while clamped, X_hi_mid ≈ 13.5% versus X_hi_L = X_hi_R = 9.1% — the midline commits ~50% higher than either flank because it receives convergent inflow from both directions. Release the clamp: advection drains committed cells faster than the Schlögl rate can hold them; by t=160 the entire grid is back at X=1. R29's "permanent midline record" was a <code>latch_field</code> artifact, not chemistry. Honest open systems require continuous supply — same act, opposite outcome, both substrate-honest</span
+                >
+            </li>
         </ul>
 
         <p class="muted">

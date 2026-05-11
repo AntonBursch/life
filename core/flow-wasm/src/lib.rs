@@ -4455,3 +4455,301 @@ impl WasmCoupledR28Prime {
     pub fn r28p_x_field(&self) -> Vec<f64> { self.species_x.clone() }
     pub fn r28p_eps_field(&self) -> Vec<f64> { self.eps_field.clone() }
 }
+
+// =====================================================================
+// WasmCoupledR29Prime -- Bistable convergence. Phase E, third rung.
+//
+// Substrate-honest rebuild of R29. See life/THESIS.md.
+//
+// Same composition as R28' (react + advect + parametrise) with
+// one change: the velocity field is position-dependent. The left
+// half flows rightward at +v, the right half flows leftward at
+// -v. Two source reservoirs clamp X at X_high (an honest
+// Dirichlet boundary condition -- a continuously-supplied
+// metabolic reservoir). Reactant from both sides converges on
+// the midline.
+//
+// The honest finding: while the clamp is active, the midline
+// reaches commitment ABOVE either source alone (the OR property
+// of two converging channels). When the clamp is released,
+// advection drains committed cells and the midline returns to
+// X = 1 -- in an open advecting system, real chemistry cannot
+// hold structure without ongoing supply. R29's 'permanent record'
+// was an artifact of latch_field, not of nature.
+//
+// Chain each tick:
+//   1. (if clamp_on) species_x[source_disks] = X_high
+//   2. Barkley.step_with_eps_field(eps_field)
+//   3. react_field(X, schlogl + wave_drive)
+//   4. advect_by(X, vx, vy, dt)            -- vx position-dependent
+//   5. modulate_parameter(X - X_low, ...) -> eps
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR29Prime {
+    tissue: Barkley2D,
+    species_x: Vec<f64>,
+    x_tmp: Vec<f64>,
+    x_shifted: Vec<f64>,
+    vx_field: Vec<f64>,
+    vy_field: Vec<f64>,
+    eps_field: Vec<f64>,
+    source_mask: Vec<bool>,
+    base_eps: f64,
+    kill_eps: f64,
+    k1a: f64,
+    k2: f64,
+    k3: f64,
+    k4b: f64,
+    x_low: f64,
+    x_high: f64,
+    u_thr: f64,
+    drive: f64,
+    velocity: f64,
+    source_radius: usize,
+    clamp_on: bool,
+    dx_step: f64,
+    dt_step: f64,
+    width: usize,
+    height: usize,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR29Prime {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        diffusion: f64,
+        a: f64,
+        b: f64,
+        base_eps: f64,
+        dx: f64,
+        dt: f64,
+        kill_eps: f64,
+        u_thr: f64,
+        drive: f64,
+        velocity: f64,
+        source_radius: usize,
+    ) -> Result<WasmCoupledR29Prime, JsError> {
+        let tissue = Barkley2D::new(width, height, diffusion, a, b, base_eps, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let n = width * height;
+        let x_low = 1.0_f64;
+        let x_high = 3.0_f64;
+
+        // Position-dependent velocity field: +v on left half, -v on right half.
+        let mid = width / 2;
+        let mut vx_field = vec![0.0_f64; n];
+        for j in 0..height {
+            let row = j * width;
+            for i in 0..width {
+                vx_field[row + i] = if i < mid { velocity } else { -velocity };
+            }
+        }
+
+        // Source-disk masks at (W/5, H/2) and (4W/5, H/2).
+        let src_l = (width / 5, height / 2);
+        let src_r = (4 * width / 5, height / 2);
+        let mut source_mask = vec![false; n];
+        let r2 = (source_radius as i32).pow(2);
+        let wi = width as i32;
+        let hi = height as i32;
+        for (cx, cy) in [src_l, src_r] {
+            let cxi = cx as i32;
+            let cyi = cy as i32;
+            for dj in -(source_radius as i32)..=(source_radius as i32) {
+                for di in -(source_radius as i32)..=(source_radius as i32) {
+                    if di * di + dj * dj > r2 { continue; }
+                    let i = ((cxi + di).rem_euclid(wi)) as usize;
+                    let j = ((cyi + dj).rem_euclid(hi)) as usize;
+                    source_mask[j * width + i] = true;
+                }
+            }
+        }
+
+        Ok(Self {
+            tissue,
+            species_x: vec![x_low; n],
+            x_tmp: vec![0.0; n],
+            x_shifted: vec![0.0; n],
+            vx_field,
+            vy_field: vec![0.0; n],
+            eps_field: vec![base_eps; n],
+            source_mask,
+            base_eps,
+            kill_eps,
+            k1a: 6.0, k2: 1.0, k3: 11.0, k4b: 6.0,
+            x_low, x_high,
+            u_thr,
+            drive,
+            velocity,
+            source_radius,
+            clamp_on: true,
+            dx_step: dx,
+            dt_step: dt,
+            width,
+            height,
+        })
+    }
+
+    pub fn step(&mut self) {
+        // 1. Source clamp.
+        if self.clamp_on {
+            for k in 0..self.species_x.len() {
+                if self.source_mask[k] {
+                    self.species_x[k] = self.x_high;
+                }
+            }
+        }
+
+        // 2. Barkley substrate.
+        self.tissue.step_with_eps_field(&self.eps_field, self.base_eps);
+
+        // 3. Schlogl reaction with wave-coupled drive.
+        let u = self.tissue.u();
+        let bare = schlogl_rate(self.k1a, self.k2, self.k3, self.k4b);
+        let n = self.species_x.len();
+        for k in 0..n {
+            let drive_k = self.drive * (u[k] - self.u_thr).max(0.0);
+            let mut one = [self.species_x[k]];
+            let _ = react_field(
+                &mut one,
+                |x| bare(x) + drive_k,
+                self.dt_step,
+            );
+            self.species_x[k] = one[0];
+        }
+
+        // 4. Position-dependent transport.
+        let _ = advect_by(
+            &self.species_x,
+            &self.vx_field, &self.vy_field,
+            self.width, self.height,
+            self.dx_step, self.dt_step,
+            &mut self.x_tmp,
+        );
+        std::mem::swap(&mut self.species_x, &mut self.x_tmp);
+
+        // 5. eps from X.
+        let gain = (self.kill_eps - self.base_eps) / (self.x_high - self.x_low);
+        for k in 0..n {
+            self.x_shifted[k] = self.species_x[k] - self.x_low;
+        }
+        let _ = modulate_parameter(
+            &self.x_shifted,
+            self.base_eps, gain,
+            self.base_eps, self.kill_eps,
+            &mut self.eps_field,
+        );
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn kick(&mut self, cx: usize, cy: usize, radius: usize, amplitude: f64) {
+        self.tissue.kick(cx, cy, radius, amplitude);
+    }
+
+    /// Zero the Barkley substrate. X field and source clamp persist.
+    pub fn reset_tissue(&mut self) { self.tissue.reset(); }
+
+    /// Reset chemistry: X back to its low stable state everywhere.
+    /// (If the clamp is still on, source disks will be re-clamped on
+    /// the next step.)
+    pub fn reset_chemistry(&mut self) {
+        for v in &mut self.species_x { *v = self.x_low; }
+        for v in &mut self.eps_field { *v = self.base_eps; }
+    }
+
+    pub fn set_drive(&mut self, d: f64) { self.drive = d.max(0.0); }
+    pub fn set_u_thr(&mut self, t: f64) { self.u_thr = t.clamp(0.0, 1.5); }
+    pub fn set_kill_eps(&mut self, e: f64) { self.kill_eps = e.max(self.base_eps); }
+
+    /// Set the magnitude of the inward velocity. Stored as
+    /// +velocity on the left half, -velocity on the right half.
+    pub fn set_velocity(&mut self, v: f64) {
+        self.velocity = v;
+        let mid = self.width / 2;
+        for j in 0..self.height {
+            let row = j * self.width;
+            for i in 0..self.width {
+                self.vx_field[row + i] = if i < mid { v } else { -v };
+            }
+        }
+    }
+
+    /// Turn the source-reservoir clamp on or off. The headline test:
+    /// release the clamp and watch the midline drain.
+    pub fn set_clamp_on(&mut self, on: bool) { self.clamp_on = on; }
+    pub fn r29p_clamp_on(&self) -> bool { self.clamp_on }
+
+    pub fn r29p_width(&self) -> usize { self.width }
+    pub fn r29p_height(&self) -> usize { self.height }
+    pub fn r29p_time(&self) -> f64 { self.tissue.time() }
+    pub fn r29p_x_low(&self) -> f64 { self.x_low }
+    pub fn r29p_x_high(&self) -> f64 { self.x_high }
+    pub fn r29p_velocity(&self) -> f64 { self.velocity }
+
+    pub fn r29p_excited_fraction(&self) -> f64 { self.tissue.excited_fraction() }
+    pub fn r29p_x_mean(&self) -> f64 {
+        self.species_x.iter().sum::<f64>() / self.species_x.len() as f64
+    }
+    pub fn r29p_x_high_fraction(&self) -> f64 {
+        let n = self.species_x.len() as f64;
+        self.species_x.iter().filter(|&&x| x > 2.0).count() as f64 / n
+    }
+    /// Left-half (i < W/2) X_high fraction.
+    pub fn r29p_x_high_fraction_left(&self) -> f64 {
+        let mid = self.width / 2;
+        let mut hi = 0usize;
+        let mut total = 0usize;
+        for j in 0..self.height {
+            let row = j * self.width;
+            for i in 0..mid {
+                total += 1;
+                if self.species_x[row + i] > 2.0 { hi += 1; }
+            }
+        }
+        if total == 0 { 0.0 } else { hi as f64 / total as f64 }
+    }
+    /// Right-half (i >= W/2) X_high fraction.
+    pub fn r29p_x_high_fraction_right(&self) -> f64 {
+        let mid = self.width / 2;
+        let mut hi = 0usize;
+        let mut total = 0usize;
+        for j in 0..self.height {
+            let row = j * self.width;
+            for i in mid..self.width {
+                total += 1;
+                if self.species_x[row + i] > 2.0 { hi += 1; }
+            }
+        }
+        if total == 0 { 0.0 } else { hi as f64 / total as f64 }
+    }
+    /// Midline-band (i in [mid-W/20, mid+W/20]) X_high fraction.
+    /// This is the "accumulator" -- two channels OR into here.
+    pub fn r29p_x_high_fraction_mid(&self) -> f64 {
+        let mid = self.width / 2;
+        let half = (self.width / 20).max(1);
+        let lo = mid - half;
+        let hi_idx = mid + half;
+        let mut hi = 0usize;
+        let mut total = 0usize;
+        for j in 0..self.height {
+            let row = j * self.width;
+            for i in lo..hi_idx {
+                total += 1;
+                if self.species_x[row + i] > 2.0 { hi += 1; }
+            }
+        }
+        if total == 0 { 0.0 } else { hi as f64 / total as f64 }
+    }
+    pub fn r29p_eps_mean(&self) -> f64 {
+        self.eps_field.iter().sum::<f64>() / self.eps_field.len() as f64
+    }
+
+    pub fn r29p_u_field(&self) -> Vec<f64> { self.tissue.u().to_vec() }
+    pub fn r29p_x_field(&self) -> Vec<f64> { self.species_x.clone() }
+    pub fn r29p_eps_field(&self) -> Vec<f64> { self.eps_field.clone() }
+}

@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R29′ — Bistable convergence · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .tri {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .tri figure { margin: 0; }
+            .tri canvas {
+                width: 100%;
+                aspect-ratio: 4 / 3;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .tri figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .tri { grid-template-columns: repeat(1, 1fr); }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r28prime-bistable-communication/">← R28′</a> ·
+            <a href="../r29-convergence/">R29 (superseded)</a> ·
+            <a href="https://github.com/AntonBursch/equipped/life">github</a>
+        </p>
+
+        <aside style="border-left:3px solid #2c7a3d;background:#152a1c;padding:10px 14px;margin:12px 0;color:#c0e8c8;">
+            <strong>Substrate-honest rebuild of R29.</strong> Same
+            composition as R28′ (no new operator), with a
+            position-dependent velocity field. Two source
+            reservoirs of the real Schlögl species X meet in the
+            middle. Honest finding: while the sources run, the
+            midline commits <em>above</em> either flank — two
+            converging channels OR into one accumulator. Release
+            the sources: advection drains the midline back to X = 1.
+            R29's "permanent record" was a latch artifact, not
+            chemistry. See
+            <a href="../THESIS.md" style="color:#a0e6a8;">THESIS.md</a>.
+        </aside>
+
+        <h1>R29′ — Bistable convergence</h1>
+        <p class="muted">
+            Phase E, third rung. R28′ showed one source can deliver
+            commitment downstream via reactant transport. R29′ asks
+            what happens when two such streams meet. Same chemistry
+            as R27′/R28′, same operators as R28′, one knob
+            different: the velocity field reverses sign at the
+            midline.
+        </p>
+
+        <p>
+            <strong>The setup.</strong> Two disks of radius 6 at
+            (W/5, H/2) and (4W/5, H/2) hold X clamped at X = 3
+            (an honest Dirichlet boundary condition representing
+            continuous metabolic supply). The velocity field is
+            <em>vₓ = +v</em> on the left half, <em>−v</em> on the
+            right half, so both reservoirs flow toward the
+            midline. The Schlögl reaction runs locally; the wave
+            adds its drive where it peaks.
+        </p>
+
+        <p>
+            <strong>What you should see.</strong> The midline
+            band reaches X &gt; 2 commitment <em>faster and
+            higher</em> than either source disk's surrounding
+            half — because cells near the midline receive inflow
+            from both directions. That is the convergence
+            property. Then press <strong>Release sources</strong>:
+            with no further input, advection carries committed X
+            away faster than the Schlögl rate can hold it, and
+            the whole grid drains back to X = 1. That is the
+            honest finding R29 obscured.
+        </p>
+
+        <div class="tri">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>1 · u (live Barkley wave)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="xCanvas"></canvas>
+                <figcaption>2 · X (Schlögl species; ← left flow | right flow →)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="epsCanvas"></canvas>
+                <figcaption>3 · ε (refractoriness; from X)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="releaseClamp">⊘ Release sources</button>
+            <button id="reclamp">⊕ Reclamp sources</button>
+            <button id="healChem">↻ Reset chemistry</button>
+            <button id="killWave">☠ Kill wave</button>
+        </div>
+
+        <div class="controls">
+            <label for="vel">velocity |v| (cells / t.u., inward)</label>
+            <input id="vel" type="range" min="0.0" max="5.0" value="2.0" step="0.1" />
+            <span id="velV" class="value">2.0</span>
+
+            <label for="drive">drive D (u → X autocatalysis gain)</label>
+            <input id="drive" type="range" min="0.5" max="12.0" value="4.0" step="0.1" />
+            <span id="driveV" class="value">4.0</span>
+
+            <label for="uThr">u threshold u_θ</label>
+            <input id="uThr" type="range" min="0.20" max="1.20" value="0.80" step="0.01" />
+            <span id="uThrV" class="value">0.80</span>
+
+            <label for="killEps">wall ε (high-X ε ceiling)</label>
+            <input id="killEps" type="range" min="0.03" max="0.30" value="0.05" step="0.005" />
+            <span id="killEpsV" class="value">0.050</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="16" value="6" step="1" />
+            <span id="speedV" class="value">6</span>
+        </div>
+
+        <p class="muted">
+            Status: <strong id="clampStatus">sources ON</strong>.
+            The middle panel shows X concentration; the bright
+            disks are the clamped source reservoirs; the streaks
+            between them are the convergent inflow. Set
+            <em>v = 0</em> to disable the channel — then the
+            sources sit but never reach the midline. Set
+            <em>v</em> high to see the streams meet sooner.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (tissue)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">excited frac</span> <span class="v" id="rEx">0.000</span></div>
+            <div><span class="k">&lt;X&gt;</span> <span class="v" id="rXm">1.000</span></div>
+            <div><span class="k">X &gt; 2 left half</span> <span class="v" id="rHL">0.0%</span></div>
+            <div><span class="k">X &gt; 2 midline</span> <span class="v" id="rHM">0.0%</span></div>
+            <div><span class="k">X &gt; 2 right half</span> <span class="v" id="rHR">0.0%</span></div>
+            <div><span class="k">&lt;ε&gt;</span> <span class="v" id="rEm">0.020</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            <em>Real-reactant communication composes.</em> Two
+            streams of the same species converge on a single
+            chemical accumulator, lifting it past its bistable
+            separatrix from both sides. The midline commits at a
+            higher level than either flank — the channels OR.
+            Same alphabet as R28′, position-dependent transport
+            only.
+        </p>
+        <p>
+            <em>Open systems forget.</em> When the sources stop,
+            chemistry alone can't hold the midline. Advection
+            sweeps committed cells away faster than the Schlögl
+            rate can stabilise them; without a fresh inflow, even
+            cells past the separatrix drop back to the low
+            attractor as their X is carried out. R29 (with
+            <code>latch_field</code>) showed permanent walls
+            after sources died — that was a bookkeeping trick.
+            R29′ shows what nature actually does: persistence
+            requires real continuous supply.
+        </p>
+        <p>
+            CLI verified at default settings (|v| = 2, drive 4,
+            sources radius 6): while clamped, X_hi_mid plateaus
+            at <strong>13.5 %</strong> versus X_hi_L = X_hi_R =
+            9.1 % — the midline commits roughly 50 % higher than
+            either flank. At t = 120 the clamp is released. By
+            t = 160 every cell has returned to X = 1. The
+            chemistry is honest; the lesson is biology's actual
+            problem (metabolism is continuous).
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> Watch the two bright
+                source disks; the streams meet at the midline
+                within a few seconds. Read the gauges: midline
+                fraction climbs above either half-grid fraction.
+            </li>
+            <li>
+                <strong>Release sources.</strong> No further
+                external input. The midline holds for a few
+                seconds (chemistry resists), then drains. Compare
+                R29 directly: same act, opposite outcome.
+            </li>
+            <li>
+                <strong>Reclamp.</strong> Bring the sources back.
+                The system re-fills. Communication is recoverable
+                as long as you have working metabolism.
+            </li>
+            <li>
+                <strong>v = 0 with clamp on.</strong> Source
+                disks stay bright but the streams die at the
+                source boundary. Pure local chemistry has no
+                channel.
+            </li>
+            <li>
+                <strong>v very high.</strong> Sources shoot mass
+                into the midline so fast that high X reaches the
+                opposite reservoir; the whole grid commits and
+                the wave goes silent (ε high everywhere).
+            </li>
+        </ol>
+
+        <h2>what changed vs. R29</h2>
+        <p>
+            R29 chain: latch_field → advect_by(<em>label</em>,
+            piecewise vₓ) → latch_field → ε. The "permanent
+            record" came from binary latches.
+        </p>
+        <p>
+            R29′ chain: react_field(<em>X</em>) →
+            advect_by(<em>X</em>, piecewise vₓ) → ε. Source
+            reservoirs supplied by external clamp. No latches.
+            Same composition as R28′, position-dependent transport
+            and a Dirichlet source -- no new operator added in
+            this rung.
+        </p>
+
+        <p class="muted">
+            Source:
+            <a href="https://github.com/AntonBursch/life">github.com/AntonBursch/life</a>.
+            Code MIT, prose CC-BY-4.0.
+        </p>
+
+        <script type="module" src="main.js"></script>
+    </body>
+</html>
