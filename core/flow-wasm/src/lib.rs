@@ -5102,3 +5102,266 @@ impl WasmCoupledR30 {
     pub fn r30_b_field(&self) -> Vec<f64> { self.b_field.clone() }
     pub fn r30_eps_field(&self) -> Vec<f64> { self.eps_field.clone() }
 }
+
+// =====================================================================
+// WasmCoupledR31 -- Autocatalytic wall. Phase E, fifth rung.
+//
+// Substrate-honest self-assembly. See life/THESIS.md.
+//
+// Difference from R30:
+//  - No wall seed at t=0. X starts at X_LOW everywhere.
+//  - The Barkley spiral at the centre is the only driver. As its
+//    waves sweep outward, the wave drive transiently lifts X past
+//    the Schlogl separatrix. In cells with high local B (the
+//    fuel-rich ring near the boundary) the high fp X = 3 exists,
+//    so committed cells STAY committed after the wave passes. In
+//    the fuel-starved core the high fp does not exist; X relaxes
+//    back to X_LOW.
+//  - No modulate_parameter -- eps is held at base everywhere. The
+//    wave is the autocatalytic propagator; X chemistry is the
+//    commit-gate; B is the spatial selector. Decoupling eps from
+//    X lets us isolate the assembly question (R32 will restore
+//    the feedback and study stability).
+//
+// No new operator. Same alphabet (react_field, advect_by, Barkley
+// step), one fewer in the loop.
+//
+// Chain each tick:
+//   1. clamp_border(B, B_supply)
+//   2. Barkley.step()                              -- uniform eps
+//   3. react_field(X, schlogl(local B) + wave_drive)
+//   4. react_field(B, -lambda_B * B)               -- fuel consumption
+//   5. advect_by(B, vx, vy, dt)                    -- inward transport
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR31 {
+    tissue: Barkley2D,
+    species_x: Vec<f64>,
+    b_field: Vec<f64>,
+    b_tmp: Vec<f64>,
+    vx_field: Vec<f64>,
+    vy_field: Vec<f64>,
+    k1a: f64,
+    k2: f64,
+    k3: f64,
+    k4: f64,
+    x_low: f64,
+    x_high: f64,
+    u_thr: f64,
+    drive: f64,
+    velocity: f64,
+    supply: f64,
+    lambda_b: f64,
+    dx_step: f64,
+    dt_step: f64,
+    width: usize,
+    height: usize,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR31 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        diffusion: f64,
+        a: f64,
+        b: f64,
+        base_eps: f64,
+        dx: f64,
+        dt: f64,
+        u_thr: f64,
+        drive: f64,
+        velocity: f64,
+        supply: f64,
+        lambda_b: f64,
+    ) -> Result<WasmCoupledR31, JsError> {
+        let tissue = Barkley2D::new(width, height, diffusion, a, b, base_eps, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let n = width * height;
+        let x_low = 1.0_f64;
+        let x_high = 3.0_f64;
+        let mut vx_field = vec![0.0_f64; n];
+        let mut vy_field = vec![0.0_f64; n];
+        let midx = width / 2;
+        let midy = height / 2;
+        for j in 0..height {
+            let row = j * width;
+            for i in 0..width {
+                vx_field[row + i] = if i < midx { velocity } else { -velocity };
+                vy_field[row + i] = if j < midy { velocity } else { -velocity };
+            }
+        }
+        Ok(Self {
+            tissue,
+            species_x: vec![x_low; n],
+            b_field: vec![supply; n],
+            b_tmp: vec![0.0; n],
+            vx_field,
+            vy_field,
+            k1a: 6.0, k2: 1.0, k3: 11.0, k4: 6.0,
+            x_low, x_high,
+            u_thr,
+            drive,
+            velocity,
+            supply,
+            lambda_b,
+            dx_step: dx,
+            dt_step: dt,
+            width,
+            height,
+        })
+    }
+
+    fn clamp_border_inplace(&mut self) {
+        let w = self.width;
+        let h = self.height;
+        let s = self.supply;
+        for i in 0..w {
+            self.b_field[i] = s;
+            self.b_field[w + i] = s;
+            self.b_field[(h - 1) * w + i] = s;
+            self.b_field[(h - 2) * w + i] = s;
+        }
+        for j in 0..h {
+            let row = j * w;
+            self.b_field[row] = s;
+            self.b_field[row + 1] = s;
+            self.b_field[row + w - 1] = s;
+            self.b_field[row + w - 2] = s;
+        }
+    }
+
+    pub fn step(&mut self) {
+        // 1. Dirichlet boundary for B.
+        self.clamp_border_inplace();
+
+        // 2. Wave with uniform eps (no feedback in this rung).
+        self.tissue.step();
+
+        // 3. Schlogl reaction for X with local B and wave drive.
+        let u = self.tissue.u();
+        let n = self.species_x.len();
+        for k in 0..n {
+            let drive_k = self.drive * (u[k] - self.u_thr).max(0.0);
+            let b_k = self.b_field[k];
+            let k1a = self.k1a; let k2 = self.k2; let k3 = self.k3; let k4 = self.k4;
+            let rate_x = |x: f64| {
+                k1a * x * x - k2 * x * x * x - k3 * x + k4 * b_k + drive_k
+            };
+            let mut one = [self.species_x[k]];
+            let _ = react_field(&mut one, rate_x, self.dt_step);
+            self.species_x[k] = one[0];
+        }
+
+        // 4. Fuel consumption (the downhill).
+        let lambda = self.lambda_b;
+        let _ = react_field(&mut self.b_field, |b| -lambda * b, self.dt_step);
+
+        // 5. Inward advection of B.
+        let _ = advect_by(
+            &self.b_field,
+            &self.vx_field, &self.vy_field,
+            self.width, self.height,
+            self.dx_step, self.dt_step,
+            &mut self.b_tmp,
+        );
+        std::mem::swap(&mut self.b_field, &mut self.b_tmp);
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_spiral(&mut self) { self.tissue.seed_spiral(); }
+
+    pub fn kick(&mut self, cx: usize, cy: usize, radius: usize, amplitude: f64) {
+        self.tissue.kick(cx, cy, radius, amplitude);
+    }
+
+    /// Kill the wave; X and B remain intact.
+    pub fn reset_tissue(&mut self) { self.tissue.reset(); }
+
+    /// Reset chemistry: X back to X_low, B back to supply everywhere.
+    pub fn reset_chemistry(&mut self) {
+        for v in &mut self.species_x { *v = self.x_low; }
+        for v in &mut self.b_field { *v = self.supply; }
+        for v in &mut self.b_tmp { *v = 0.0; }
+    }
+
+    pub fn set_drive(&mut self, d: f64) { self.drive = d.max(0.0); }
+    pub fn set_u_thr(&mut self, t: f64) { self.u_thr = t.clamp(0.0, 1.5); }
+    pub fn set_supply(&mut self, s: f64) { self.supply = s.max(0.0); }
+    pub fn set_lambda_b(&mut self, l: f64) { self.lambda_b = l.max(0.0); }
+    pub fn set_velocity(&mut self, v: f64) {
+        self.velocity = v;
+        let midx = self.width / 2;
+        let midy = self.height / 2;
+        for j in 0..self.height {
+            let row = j * self.width;
+            for i in 0..self.width {
+                self.vx_field[row + i] = if i < midx { v } else { -v };
+                self.vy_field[row + i] = if j < midy { v } else { -v };
+            }
+        }
+    }
+
+    pub fn r31_width(&self) -> usize { self.width }
+    pub fn r31_height(&self) -> usize { self.height }
+    pub fn r31_time(&self) -> f64 { self.tissue.time() }
+    pub fn r31_x_low(&self) -> f64 { self.x_low }
+    pub fn r31_x_high(&self) -> f64 { self.x_high }
+    pub fn r31_supply(&self) -> f64 { self.supply }
+    pub fn r31_velocity(&self) -> f64 { self.velocity }
+    pub fn r31_lambda_b(&self) -> f64 { self.lambda_b }
+
+    pub fn r31_excited_fraction(&self) -> f64 { self.tissue.excited_fraction() }
+    pub fn r31_x_mean(&self) -> f64 {
+        self.species_x.iter().sum::<f64>() / self.species_x.len() as f64
+    }
+    pub fn r31_b_mean(&self) -> f64 {
+        self.b_field.iter().sum::<f64>() / self.b_field.len() as f64
+    }
+
+    /// Fraction of cells in the outer ring (within ring_w = 12 cells
+    /// of the boundary) past the X = 2 separatrix.
+    pub fn r31_x_high_fraction_ring(&self) -> f64 {
+        let ring_w = 12usize;
+        let w = self.width; let h = self.height;
+        let mut hi = 0usize;
+        let mut total = 0usize;
+        for j in 0..h {
+            let row = j * w;
+            for i in 0..w {
+                let in_core = i >= ring_w && i < w - ring_w
+                    && j >= ring_w && j < h - ring_w;
+                if !in_core {
+                    total += 1;
+                    if self.species_x[row + i] > 2.0 { hi += 1; }
+                }
+            }
+        }
+        if total == 0 { 0.0 } else { hi as f64 / total as f64 }
+    }
+
+    /// Fraction of cells in the core (interior, beyond ring_w from the
+    /// boundary) past X = 2. Should stay near zero.
+    pub fn r31_x_high_fraction_core(&self) -> f64 {
+        let ring_w = 12usize;
+        let w = self.width; let h = self.height;
+        let mut hi = 0usize;
+        let mut total = 0usize;
+        for j in ring_w..(h - ring_w) {
+            let row = j * w;
+            for i in ring_w..(w - ring_w) {
+                total += 1;
+                if self.species_x[row + i] > 2.0 { hi += 1; }
+            }
+        }
+        if total == 0 { 0.0 } else { hi as f64 / total as f64 }
+    }
+
+    pub fn r31_u_field(&self) -> Vec<f64> { self.tissue.u().to_vec() }
+    pub fn r31_x_field(&self) -> Vec<f64> { self.species_x.clone() }
+    pub fn r31_b_field(&self) -> Vec<f64> { self.b_field.clone() }
+}

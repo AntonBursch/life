@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R31 — Autocatalytic wall · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .triple {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .triple figure { margin: 0; }
+            .triple canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .triple figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 900px) {
+                .triple { grid-template-columns: repeat(1, 1fr); }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r30-enclosure/">← R30</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <aside style="border-left:3px solid #2c7a3d;background:#152a1c;padding:10px 14px;margin:12px 0;color:#c0e8c8;">
+            <strong>The wall builds itself.</strong> R30 was honest
+            about maintenance but not about origin — the membrane
+            was seeded at <em>t=0</em>. R31 removes the seed. A
+            single kick at the centre is the only intervention.
+            The wall self-assembles around the fuel-rich ring as
+            the wave sweeps through it, and only there: the
+            fuel-starved core stays blank. No new operator.
+            See <a href="../THESIS.md" style="color:#a0e6a8;">THESIS.md</a>.
+        </aside>
+
+        <h1>R31 — Autocatalytic wall</h1>
+        <p class="muted">
+            Phase E, fifth rung. R30 demonstrated that a
+            chemistry-and-fuel boundary holds together as long
+            as the downhill flow keeps paying for it. R31 asks
+            the next question: can the structure <em>appear</em>
+            from local rules and a single kick? Same alphabet,
+            same chemistry. One operator fewer.
+        </p>
+
+        <p>
+            <strong>The setup.</strong> Same X and B fields as
+            R30 (Schlögl bistable for X, fuel field B clamped
+            at the grid edge, advected radially inward, consumed
+            at rate λ_B). At t=0, X is at its low fixed point
+            <em>everywhere</em> — no wall is seeded. A Barkley
+            spiral is kicked once in the centre. From then on,
+            no further intervention. The wave self-sustains; X
+            evolves under local Schlögl dynamics; B evolves
+            under its own clamp / advect / decay loop. ε is
+            held constant at base (no <code>modulate_parameter</code>
+            feedback): the wave is free to keep sweeping through
+            committed cells, which is what we want for
+            autocatalysis to propagate around the ring.
+        </p>
+
+        <p>
+            <strong>What you should see.</strong> As each wave
+            front passes a cell, the drive term lifts X
+            transiently past the Schlögl separatrix at X=2. In
+            the fuel-rich ring (B large), the high fixed point
+            at X=3 exists, so the committed cell <em>stays</em>
+            committed after the wave moves on — Schlögl's own
+            mass-action irreversibility. In the fuel-starved core
+            (B small), no high fp exists, and X relaxes back to
+            1. The ring fills in from the kick outward as waves
+            keep sweeping; the core stays blank. The wall is the
+            <em>signature</em> of where B is high enough to
+            support it.
+        </p>
+
+        <div class="triple">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>1 · u (Barkley wave — the propagator)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="xCanvas"></canvas>
+                <figcaption>2 · X (Schlögl species — wall self-assembles)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="bCanvas"></canvas>
+                <figcaption>3 · B (fuel — selector for where commitment sticks)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="resetWave">☠ Reset wave</button>
+            <button id="seedSpiral">↻ Seed new spiral</button>
+            <button id="resetChem">↻ Reset chemistry</button>
+        </div>
+
+        <div class="controls">
+            <label for="lambda">λ_B (fuel consumption rate)</label>
+            <input id="lambda" type="range" min="0.01" max="0.40" value="0.10" step="0.01" />
+            <span id="lambdaV" class="value">0.10</span>
+
+            <label for="vel">velocity |v| (cells / t.u., inward)</label>
+            <input id="vel" type="range" min="0.0" max="3.0" value="1.0" step="0.1" />
+            <span id="velV" class="value">1.0</span>
+
+            <label for="drive">drive D (u → X autocatalysis gain)</label>
+            <input id="drive" type="range" min="0.5" max="16.0" value="8.0" step="0.1" />
+            <span id="driveV" class="value">8.0</span>
+
+            <label for="supply">B supply (boundary concentration)</label>
+            <input id="supply" type="range" min="0.0" max="1.5" value="1.0" step="0.05" />
+            <span id="supplyV" class="value">1.00</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="16" value="6" step="1" />
+            <span id="speedV" class="value">6</span>
+        </div>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (tissue)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">excited frac</span> <span class="v" id="rEx">0.000</span></div>
+            <div><span class="k">&lt;X&gt;</span> <span class="v" id="rXm">1.000</span></div>
+            <div><span class="k">wall (X &gt; 2, ring)</span> <span class="v" id="rRing">0.0%</span></div>
+            <div><span class="k">core (X &gt; 2, interior)</span> <span class="v" id="rCore">0.0%</span></div>
+            <div><span class="k">&lt;B&gt;</span> <span class="v" id="rBm">0.000</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            <em>Origin without a designer.</em> The wave is the
+            only thing seeded. The wall arises from local mass-
+            action on X (Schlögl autocatalysis), gated spatially
+            by where B is high enough to support the bistable's
+            second fixed point. No part of the grid is told to
+            be a wall; no comparator fires on a memory; no latch
+            holds a bit. Cells past X=2 fall into the high
+            attractor on their own and stay there because the
+            chemistry says so.
+        </p>
+        <p>
+            <em>Selectivity is automatic.</em> The same wave
+            sweeps through both ring and core. Only the ring
+            commits, because that is where k4·B sits above ~5.5
+            and the high fp exists. The core sees the same
+            drive, but with k4·B too low the only stable state
+            is X=1; the wave-induced bump decays back. Geometry
+            of commitment = geometry of fuel.
+        </p>
+        <p>
+            CLI verified at default settings (128×128, |v|=1,
+            λ_B=0.1, D=8, B_supply=1.0): wave seeded once at
+            t=0; <strong>ring fills in</strong> from 6.5% (t=4)
+            to 30.0% (t=20) to a steady 33.2% (t=320). Core
+            fraction stays at <strong>0.0%</strong> at every
+            checkpoint past t=10. ⟨B⟩_ring ≈ 0.69, ⟨B⟩_core ≈
+            0.12 — the fuel selectivity is real.
+        </p>
+
+        <h2>try this</h2>
+        <ul>
+            <li>
+                <strong>Watch assembly happen.</strong> Press
+                "Reset chemistry", then "Seed new spiral". The
+                ring should start blank and fill in over ~10–20
+                t.u. as the wave fronts reach the high-B annulus
+                and the Schlögl commit gate fires cell by cell.
+            </li>
+            <li>
+                <strong>Starve the chemistry.</strong> Move the
+                B supply slider to ~0.5. With less fuel reaching
+                the ring, fewer cells can support the high fp;
+                the wall thins. Drop it to ~0.3 and the wall
+                refuses to assemble at all — the wave still
+                sweeps, but no high fp exists for it to commit
+                cells into.
+            </li>
+            <li>
+                <strong>Tune the fuel decay rate.</strong> Lower
+                λ_B = longer decay length = wider high-B zone =
+                thicker wall. Higher λ_B = sharper ring = thinner
+                wall. The wall width is set by v/λ_B.
+            </li>
+            <li>
+                <strong>Cut the drive.</strong> Drop D below ~3
+                and a single wave passage no longer pushes cells
+                past X=2; the wall stops assembling. The
+                separatrix is real; weak kicks bounce off it.
+            </li>
+            <li>
+                <strong>Kill the wave once the wall is in.</strong>
+                After the wall has formed, press "Reset wave".
+                The wall persists (chemistry, not the wave, is
+                what holds it). Then move the B supply slider to
+                0 — the wall drains as in R30. Two honest
+                failure modes, both visible.
+            </li>
+        </ul>
+
+        <h2>what the rung does not yet have</h2>
+        <p class="muted">
+            ε feedback is off. R30's full coupling
+            (<code>modulate_parameter</code> from X → ε) is
+            re-introduced in R32, which studies whether a
+            self-built wall is stable when it also kills the
+            wave that built it. That is the autopoietic
+            stability question; this rung answers the
+            autocatalytic origin question first.
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

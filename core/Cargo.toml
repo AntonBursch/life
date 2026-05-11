@@ -35,6 +35,7 @@ members = [
     "r28prime-bistable-communication",
     "r29prime-bistable-convergence",
     "r30-enclosure",
+    "r31-autocatalytic-wall",
     "server",
     "flow-wasm",
 ]

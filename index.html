@@ -248,6 +248,13 @@
                     >No new operator — composition of <code>react_field</code> + <code>advect_by</code> + <code>modulate_parameter</code> applied to two coupled species fields (X, B) plus the wave. The Schlögl rate uses a SPATIAL fuel field B in place of the constant reservoir term: where B is high, the bistable’s X=3 fixed point exists; where B is low, only X=1 survives. B is Dirichlet-clamped at the grid edge (open boundary — the “outside”), advected inward by a 4-way radial velocity field, and consumed at first-order rate λ_B everywhere (the downhill that pays for the structure). CLI 128×128 (|v|=1, λ_B=0.1, wall 6 cells, B_supply=1): supply on — wall persists at 18.2% of ring cells, core fraction 0.0%, spiral enclosed inside (excited ≈ 0.21); supply cut at t=160 — by t=180 wall fraction is 0.0%, by t=220 ⟨B⟩ ≈ 0. The boundary is a real chemical structure paid for by a real fuel flow, and it visibly fails when the flow stops. First life/ structure honest enough for ARC rung 5</span
                 >
             </li>
+            <li>
+                <a href="r31-autocatalytic-wall/">R31 — Autocatalytic wall</a> ·
+                <em class="muted" style="color:#2c7a3d;">[Phase E · the wall builds itself]</em> ·
+                <span class="muted"
+                    >No new operator — same alphabet as R30, with <code>modulate_parameter</code> dropped from the loop. No wall seed at t=0; X starts at its low fixed point everywhere. A Barkley spiral kicked once in the centre is the only intervention. As wave fronts sweep through the fuel-rich ring, the drive transiently lifts X past the Schlögl separatrix; in the ring (B large) the high fp X=3 exists, so committed cells STAY committed by mass-action irreversibility; in the fuel-starved core no high fp exists and X relaxes back to 1. The wall is the signature of where B can support it — geometry of commitment = geometry of fuel. CLI 128×128 (|v|=1, λ_B=0.1, D=8, B_supply=1): ring fills from 6.5% (t=4) to 30.0% (t=20) to a steady 33.2% (t=320); core fraction stays at 0.0% past t=10; ⟨B⟩_ring ≈ 0.69 vs ⟨B⟩_core ≈ 0.12. Origin without a designer</span
+                >
+            </li>
         </ul>
 
         <p class="muted">
