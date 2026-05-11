@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R19 — Memory of waves · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .tri {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .tri figure { margin: 0; }
+            .tri canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .tri figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .tri { grid-template-columns: repeat(1, 1fr); }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r18-waves-leave-marks/">← R18</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R19 — Memory of waves</h1>
+        <p class="muted">
+            Tenth composition. Phase A closer. New operator
+            <code>integrate_field</code>: the kit's "integrate"
+            primitive — a per-cell leaky integrator. Same Barkley
+            substrate as R7 and R18; instead of detecting events,
+            we accumulate u. With leak = 0 the operator is a pure
+            dose meter: total u-exposure per cell. With leak > 0
+            it is a low-pass filter — the field settles at
+            <code>&lt;u&gt;/leak</code>, a time-averaged map of
+            excitable activity.
+        </p>
+
+        <div class="tri">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>1 · u (excitable activator)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="avgCanvas"></canvas>
+                <figcaption>2 · y, leaky integral (low-pass)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="doseCanvas"></canvas>
+                <figcaption>3 · dose, leak=0 (∫u dt)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseed">↻ Reseed spiral</button>
+            <button id="resetMem">↻ Reset memory</button>
+            <button id="kick">⚡ Kick centre</button>
+        </div>
+
+        <div class="controls">
+            <label for="leak">leak (1/τ)</label>
+            <input id="leak" type="range" min="0.01" max="2.0" value="0.1" step="0.01" />
+            <span id="leakV" class="value">0.10</span>
+
+            <label for="eps">excitable ε</label>
+            <input id="eps" type="range" min="0.005" max="0.05" value="0.02" step="0.005" />
+            <span id="epsV" class="value">0.020</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="12" value="4" step="1" />
+            <span id="speedV" class="value">4</span>
+        </div>
+
+        <p class="muted">
+            Read in order. Panel 1: the Barkley activator u — a
+            spiral wavefront. Panel 2: the leaky integral of u.
+            Time constant is 1/leak; the field converges to a
+            spatial pattern of <em>average</em> activity. Panel 3:
+            the same integrator with leak = 0 — no forgetting, so
+            the field grows without bound. The brightness gradient
+            shows which cells have been visited more often by the
+            wave.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (tissue)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">&lt;u&gt;</span> <span class="v" id="rUm">0.000</span></div>
+            <div><span class="k">τ = 1/leak</span> <span class="v" id="rTau">10.0</span></div>
+            <div><span class="k">&lt;y&gt; predicted</span> <span class="v" id="rYp">0.000</span></div>
+            <div><span class="k">&lt;y&gt; observed</span> <span class="v" id="rYo">0.000</span></div>
+            <div><span class="k">max dose</span> <span class="v" id="rDmax">0.000</span></div>
+            <div><span class="k">regime</span> <span class="v" id="rRegime">warming</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            R18 added the discretise operator: continuous in,
+            symbolic out. R19 adds its dual: continuous in,
+            continuous out, but with <em>memory</em>.
+            <code>integrate_field</code> advances
+            <code>dy/dt = input − leak · y</code> by one Euler
+            step. With leak = 0, the operator integrates forever
+            — a dose meter, an odometer, a fluence map. With
+            leak &gt; 0, it forgets exponentially — a low-pass
+            filter with time constant τ = 1/leak, exactly the
+            "leaky integrate" half of a leaky-integrate-and-fire
+            neuron.
+        </p>
+
+        <p>
+            The composition is a single substrate paired with two
+            integrators on the same operator. Panel 2 forgets;
+            panel 3 doesn't. Both are honest views of the wave —
+            one as recent average, one as cumulative history.
+            Together they show what "integrate" means as a
+            primitive on the kit: memory length is a parameter,
+            not a structural choice.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default (leak = 0.10, τ = 10).</strong>
+                Watch panel 2 settle. After a few τ the leaky map
+                converges to a steady spatial pattern: the
+                time-averaged activity. The "observed" and
+                "predicted" rows in the readout should converge.
+            </li>
+            <li>
+                <strong>Leak = 2 (τ = 0.5).</strong> Short memory.
+                Panel 2 almost mirrors panel 1 — the integrator
+                is fast enough to track u. Steady state is
+                small: &lt;u&gt;/leak ≈ 0.1.
+            </li>
+            <li>
+                <strong>Leak = 0.01 (τ = 100).</strong> Long
+                memory. Panel 2 grows for a long time before
+                saturating; the steady state &lt;u&gt;/leak is
+                large (~20). The map is a smooth average over
+                many spiral rotations.
+            </li>
+            <li>
+                <strong>Panel 3 grows forever.</strong> The
+                dose-meter panel just keeps brightening. Compare
+                its rate to mean(u): the panel value increases
+                by &lt;u&gt;·t. That is what a pure integrator
+                does.
+            </li>
+            <li>
+                <strong>Reset memory.</strong> Wipes both
+                integrators but leaves the tissue alone. You can
+                watch them re-converge from zero on the same
+                wave.
+            </li>
+            <li>
+                <strong>Kick centre.</strong> A transient bump
+                appears immediately in u, slowly in y, and
+                permanently (as a slight increment) in the dose.
+                Three different time scales, one input.
+            </li>
+        </ol>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>Steady state matches theory.</strong> The
+                readout's "&lt;y&gt; predicted" is &lt;u&gt; ÷
+                leak. After a few τ, the observed mean should be
+                within a few percent. CLI run confirmed it:
+                &lt;u&gt;=0.21, predicted 2.12, observed 2.20.
+            </li>
+            <li>
+                <strong>Dose grows linearly.</strong> Pure
+                accumulator. After 1500 steps max dose was 17.6;
+                after 3000 steps it was 34.1 — exactly 2× for 2×
+                time. That is the signature of an integrator with
+                zero leak.
+            </li>
+            <li>
+                <strong>Memory length, not architecture.</strong>
+                The same operator runs in both panels with
+                different leak. Long-term vs short-term memory is
+                a slider, not a rewire.
+            </li>
+            <li>
+                <strong>R18 vs R19.</strong> R18 made discrete
+                events out of continuous waves. R19 makes a
+                continuous record of those waves. The pair is
+                the kit's bridge in both directions between
+                fields and processes with memory.
+            </li>
+        </ul>
+
+        <h2>why this rung matters — Phase A complete</h2>
+        <p>
+            R19 closes Phase A. The kit now has eight operators
+            in six categories: read-by-threshold, read-by-peak,
+            read-by-magnitude, differentiate (scalar + vector),
+            transport, discretise, integrate. With these eight
+            primitives the substrates can be composed in
+            essentially any direction we want: react, diffuse,
+            sync, gate, route, carry, fire, remember. Phase B
+            will start composing them into specific behaviours
+            we want — modules, not rungs.
+        </p>
+
+        <p>
+            Operator alphabet (8 ops, 6 categories):
+            <code>excitable_gate</code>,
+            <code>phase_to_scalar_field</code>,
+            <code>bulk_gate</code>,
+            <code>gradient_magnitude</code>,
+            <code>gradient_field</code>,
+            <code>advect_by</code>,
+            <code>threshold_event</code>,
+            <code>integrate_field</code>.
+        </p>
+
+        <p class="muted">
+            Math + code: <code>flow::Barkley2D</code>,
+            <code>flow::integrate_field</code> (new — leaky-Euler
+            integrator on a field).
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

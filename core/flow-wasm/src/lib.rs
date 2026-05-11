@@ -4,7 +4,7 @@
 //! JS/Rust interop and exposes the diffusion field in a form a Canvas
 //! renderer can consume cheaply.
 
-use flow::{excitable_gate, phase_to_scalar_field, bulk_gate, gradient_magnitude, gradient_field, advect_by, threshold_event, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
+use flow::{excitable_gate, phase_to_scalar_field, bulk_gate, gradient_magnitude, gradient_field, advect_by, threshold_event, integrate_field, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -2182,4 +2182,123 @@ impl WasmCoupledR18 {
             if *lf < 0.0 { 0.0 } else { (-((t - lf) / tau)).exp() }
         }).collect()
     }
+}
+
+// =====================================================================
+// R19: memory of waves. Final Phase-A rung. Barkley (R7) drives
+// two leaky integrators with different leaks. integrate_field is
+// the alphabet's "integrate" primitive -- dual to R18's
+// discretise. dy/dt = u - leak*y. leak=0: pure dose meter.
+// leak>0: low-pass with time constant tau = 1/leak; steady state
+// y_inf = <u>/leak.
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR19 {
+    tissue: Barkley2D,
+    dose: Vec<f64>,            // leak = 0  (pure accumulator)
+    avg: Vec<f64>,             // leak > 0  (leaky low-pass)
+    leak: f64,
+    dt_integrate: f64,
+    width: usize,
+    height: usize,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR19 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        diffusion: f64,
+        a: f64,
+        b: f64,
+        eps: f64,
+        dx: f64,
+        dt: f64,
+        leak: f64,
+    ) -> Result<WasmCoupledR19, JsError> {
+        let tissue = Barkley2D::new(width, height, diffusion, a, b, eps, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let n = width * height;
+        Ok(Self {
+            tissue,
+            dose: vec![0.0; n],
+            avg: vec![0.0; n],
+            leak,
+            dt_integrate: dt,
+            width, height,
+        })
+    }
+
+    pub fn step(&mut self) {
+        self.tissue.step();
+        let u = self.tissue.u();
+        let _ = integrate_field(u, &mut self.dose, self.dt_integrate, 0.0);
+        let _ = integrate_field(u, &mut self.avg,  self.dt_integrate, self.leak);
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_spiral(&mut self) {
+        self.tissue.seed_spiral();
+        self.reset_memory();
+    }
+
+    pub fn kick(&mut self, cx: usize, cy: usize, radius: usize, amplitude: f64) {
+        self.tissue.kick(cx, cy, radius, amplitude);
+    }
+
+    pub fn reset_tissue(&mut self) {
+        self.tissue.reset();
+        self.reset_memory();
+    }
+
+    pub fn reset_memory(&mut self) {
+        for v in &mut self.dose { *v = 0.0; }
+        for v in &mut self.avg  { *v = 0.0; }
+    }
+
+    pub fn set_leak(&mut self, leak: f64) {
+        self.leak = leak.max(0.0);
+    }
+    pub fn set_a(&mut self, a: f64) { self.tissue.set_a(a); }
+    pub fn set_b(&mut self, b: f64) { self.tissue.set_b(b); }
+    pub fn set_eps(&mut self, e: f64) { self.tissue.set_eps(e); }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.width }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.height }
+    #[wasm_bindgen(getter)]
+    pub fn tissue_time(&self) -> f64 { self.tissue.time() }
+    #[wasm_bindgen(getter)]
+    pub fn leak_value(&self) -> f64 { self.leak }
+
+    pub fn u_mean(&self) -> f64 {
+        let u = self.tissue.u();
+        u.iter().sum::<f64>() / u.len() as f64
+    }
+    pub fn dose_max(&self) -> f64 {
+        self.dose.iter().cloned().fold(f64::NEG_INFINITY, f64::max).max(0.0)
+    }
+    pub fn dose_mean(&self) -> f64 {
+        self.dose.iter().sum::<f64>() / self.dose.len() as f64
+    }
+    pub fn avg_max(&self) -> f64 {
+        self.avg.iter().cloned().fold(f64::NEG_INFINITY, f64::max).max(0.0)
+    }
+    pub fn avg_mean(&self) -> f64 {
+        self.avg.iter().sum::<f64>() / self.avg.len() as f64
+    }
+    /// Predicted steady-state of leaky integrator: <u>/leak.
+    pub fn avg_predicted(&self) -> f64 {
+        if self.leak <= 0.0 { f64::INFINITY }
+        else { self.u_mean() / self.leak }
+    }
+
+    pub fn u_field(&self) -> Vec<f64> { self.tissue.u().to_vec() }
+    pub fn dose_field(&self) -> Vec<f64> { self.dose.clone() }
+    pub fn avg_field(&self) -> Vec<f64> { self.avg.clone() }
 }

@@ -20,6 +20,7 @@ members = [
     "r16-walls-route-sync",
     "r17-territory-carries-dye",
     "r18-waves-leave-marks",
+    "r19-memory-of-waves",
     "server",
     "flow-wasm",
 ]

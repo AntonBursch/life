@@ -331,6 +331,39 @@ pub fn threshold_event(
     Ok(())
 }
 
+/// Leaky integrator over a field. Advances `state` by one Euler
+/// step of `dy/dt = input - leak * y`.
+///
+/// - `leak == 0`: pure accumulator. `state[k] += dt * input[k]`.
+///   Useful for total exposure, dose, integrated flux.
+/// - `leak  > 0`: low-pass filter / leaky integrate-and-fire.
+///   Steady state is `state[k] = input[k] / leak`; the time
+///   constant is `tau = 1 / leak`.
+///
+/// Operator alphabet category: "integrate" (continuous accumulator
+/// with optional leak — dual to `threshold_event`, which is the
+/// discretise operator).
+pub fn integrate_field(
+    input: &[f64],
+    state: &mut [f64],
+    dt: f64,
+    leak: f64,
+) -> Result<(), CouplingError> {
+    if input.len() != state.len() {
+        return Err(CouplingError::SizeMismatch);
+    }
+    if !(dt >= 0.0) {
+        return Err(CouplingError::BadParam { name: "dt", value: dt });
+    }
+    if !(leak >= 0.0) {
+        return Err(CouplingError::BadParam { name: "leak", value: leak });
+    }
+    for k in 0..input.len() {
+        state[k] += dt * (input[k] - leak * state[k]);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -661,5 +694,48 @@ mod tests {
             threshold_event(&prev, &curr, 0.5, &mut out),
             Err(CouplingError::SizeMismatch)
         );
+    }
+
+    #[test]
+    fn integrate_field_pure_accumulator_grows_linearly() {
+        // leak=0, constant input=1, dt=0.1, 10 steps -> state=1.0
+        let input = vec![1.0; 3];
+        let mut state = vec![0.0; 3];
+        for _ in 0..10 {
+            integrate_field(&input, &mut state, 0.1, 0.0).unwrap();
+        }
+        for s in &state {
+            assert!((s - 1.0).abs() < 1e-12, "state {} != 1.0", s);
+        }
+    }
+
+    #[test]
+    fn integrate_field_leaky_approaches_steady_state() {
+        // dy/dt = input - leak*y -> y_inf = input/leak
+        // input=2, leak=1 -> y_inf = 2. Use small dt for stability.
+        let input = vec![2.0; 1];
+        let mut state = vec![0.0; 1];
+        for _ in 0..2000 {
+            integrate_field(&input, &mut state, 0.01, 1.0).unwrap();
+        }
+        assert!((state[0] - 2.0).abs() < 1e-6, "got {}", state[0]);
+    }
+
+    #[test]
+    fn integrate_field_rejects_bad_inputs() {
+        let input = vec![0.0; 3];
+        let mut state = vec![0.0; 3];
+        assert_eq!(
+            integrate_field(&input, &mut vec![0.0; 4], 0.1, 0.0),
+            Err(CouplingError::SizeMismatch)
+        );
+        assert!(matches!(
+            integrate_field(&input, &mut state, -0.1, 0.0).unwrap_err(),
+            CouplingError::BadParam { name: "dt", .. }
+        ));
+        assert!(matches!(
+            integrate_field(&input, &mut state, 0.1, -1.0).unwrap_err(),
+            CouplingError::BadParam { name: "leak", .. }
+        ));
     }
 }
