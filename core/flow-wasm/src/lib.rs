@@ -2801,3 +2801,158 @@ impl WasmCoupledR22 {
     pub fn vx_field(&self) -> Vec<f64> { self.gx.clone() }
     pub fn vy_field(&self) -> Vec<f64> { self.gy.clone() }
 }
+
+// =====================================================================
+// WasmCoupledR23 -- Excitable courier. Phase B (B4).
+//
+// gradient_field(u, ...)                  velocity = alpha * grad u
+// advect_by(payload, alpha*grad(u), ...)  transport
+//
+// Difference from R22: NO memory. Velocity is the instantaneous
+// slope of the wave, not its integrated trace. The wave carries
+// the payload as it passes. Spiral chirality breaks symmetry,
+// kicks accumulate coherently.
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR23 {
+    tissue: Barkley2D,
+    gx: Vec<f64>,
+    gy: Vec<f64>,
+    payload: Vec<f64>,
+    payload_next: Vec<f64>,
+    alpha: f64,
+    dt_step: f64,
+    dx: f64,
+    width: usize,
+    height: usize,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR23 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        diffusion: f64,
+        a: f64,
+        b: f64,
+        eps: f64,
+        dx: f64,
+        dt: f64,
+        alpha: f64,
+    ) -> Result<WasmCoupledR23, JsError> {
+        let tissue = Barkley2D::new(width, height, diffusion, a, b, eps, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let n = width * height;
+        Ok(Self {
+            tissue,
+            gx: vec![0.0; n],
+            gy: vec![0.0; n],
+            payload: vec![0.0; n],
+            payload_next: vec![0.0; n],
+            alpha,
+            dt_step: dt,
+            dx,
+            width,
+            height,
+        })
+    }
+
+    pub fn step(&mut self) {
+        self.tissue.step();
+        let u = self.tissue.u();
+        let _ = gradient_field(u, self.width, self.height, self.dx, &mut self.gx, &mut self.gy);
+        for k in 0..self.gx.len() {
+            self.gx[k] *= self.alpha;
+            self.gy[k] *= self.alpha;
+        }
+        let _ = advect_by(
+            &self.payload, &self.gx, &self.gy,
+            self.width, self.height, self.dx, self.dt_step,
+            &mut self.payload_next,
+        );
+        std::mem::swap(&mut self.payload, &mut self.payload_next);
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_spiral(&mut self) { self.tissue.seed_spiral(); }
+
+    pub fn kick(&mut self, cx: usize, cy: usize, radius: usize, amplitude: f64) {
+        self.tissue.kick(cx, cy, radius, amplitude);
+    }
+
+    pub fn seed_payload_blob(&mut self, cx: f64, cy: f64, sigma: f64, amp: f64) {
+        let s2 = (sigma * sigma).max(1e-6);
+        for j in 0..self.height {
+            for i in 0..self.width {
+                let dxp = i as f64 - cx;
+                let dyp = j as f64 - cy;
+                let r2 = dxp * dxp + dyp * dyp;
+                self.payload[j * self.width + i] += amp * (-r2 / (2.0 * s2)).exp();
+            }
+        }
+    }
+
+    pub fn reset_tissue(&mut self) { self.tissue.reset(); }
+    pub fn reset_payload(&mut self) {
+        for v in &mut self.payload { *v = 0.0; }
+        for v in &mut self.payload_next { *v = 0.0; }
+    }
+
+    pub fn set_alpha(&mut self, alpha: f64) { self.alpha = alpha; }
+    pub fn set_a(&mut self, a: f64) { self.tissue.set_a(a); }
+    pub fn set_b(&mut self, b: f64) { self.tissue.set_b(b); }
+    pub fn set_eps(&mut self, e: f64) { self.tissue.set_eps(e); }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.width }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.height }
+    #[wasm_bindgen(getter)]
+    pub fn tissue_time(&self) -> f64 { self.tissue.time() }
+
+    pub fn u_mean(&self) -> f64 {
+        let u = self.tissue.u();
+        u.iter().sum::<f64>() / u.len() as f64
+    }
+    pub fn grad_max(&self) -> f64 {
+        (0..self.gx.len())
+            .map(|k| (self.gx[k] * self.gx[k] + self.gy[k] * self.gy[k]).sqrt())
+            .fold(f64::NEG_INFINITY, f64::max)
+            .max(0.0)
+    }
+    pub fn payload_total(&self) -> f64 { self.payload.iter().sum() }
+    pub fn payload_max(&self) -> f64 {
+        self.payload.iter().cloned().fold(f64::NEG_INFINITY, f64::max).max(0.0)
+    }
+    pub fn payload_centroid_x(&self) -> f64 {
+        let mut num = 0.0;
+        let mut den = 0.0;
+        for j in 0..self.height {
+            for i in 0..self.width {
+                let p = self.payload[j * self.width + i];
+                num += i as f64 * p;
+                den += p;
+            }
+        }
+        if den > 1e-12 { num / den } else { 0.0 }
+    }
+    pub fn payload_centroid_y(&self) -> f64 {
+        let mut num = 0.0;
+        let mut den = 0.0;
+        for j in 0..self.height {
+            for i in 0..self.width {
+                let p = self.payload[j * self.width + i];
+                num += j as f64 * p;
+                den += p;
+            }
+        }
+        if den > 1e-12 { num / den } else { 0.0 }
+    }
+
+    pub fn u_field(&self) -> Vec<f64> { self.tissue.u().to_vec() }
+    pub fn payload_field(&self) -> Vec<f64> { self.payload.clone() }
+}

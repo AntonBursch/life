@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R23 — Excitable courier · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .duo {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .duo figure { margin: 0; }
+            .duo canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .duo figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .duo { grid-template-columns: repeat(1, 1fr); }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r22-memory-shapes-flow/">← R22</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R23 — Excitable courier</h1>
+        <p class="muted">
+            Phase B (B4). No new operator. Two Phase-A
+            primitives wired direct, with no integrator in
+            between: <code>gradient_field</code> reads
+            <code>∇u</code> off the live Barkley activator;
+            <code>advect_by</code> transports a passive payload
+            by <code>α · ∇u</code>. The wave carries the cargo
+            as it passes.
+        </p>
+
+        <div class="duo">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>1 · u (live wave)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="payCanvas"></canvas>
+                <figcaption>2 · payload (advected by α · ∇u)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseedWave">↻ Reseed spiral</button>
+            <button id="dropPayload">⚇ Drop payload</button>
+            <button id="resetPayload">↻ Clear payload</button>
+            <button id="kick">⚡ Kick centre</button>
+        </div>
+
+        <div class="controls">
+            <label for="alpha">α (∇u → speed)</label>
+            <input id="alpha" type="range" min="0" max="10" value="3" step="0.5" />
+            <span id="alphaV" class="value">3.0</span>
+
+            <label for="eps">excitable ε</label>
+            <input id="eps" type="range" min="0.005" max="0.05" value="0.02" step="0.005" />
+            <span id="epsV" class="value">0.020</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="16" value="6" step="1" />
+            <span id="speedV" class="value">6</span>
+        </div>
+
+        <p class="muted">
+            Click anywhere on the payload panel to drop a new
+            Gaussian blob there. Watch it get jostled by each
+            wavefront and, over time, carried in the direction
+            of the spiral's rotation. The payload sees no memory,
+            no recovery variable, nothing but
+            <em>this instant's wave slope</em>. The motion is
+            entirely "as the wave passes".
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (tissue)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">α</span> <span class="v" id="rAlpha">3.0</span></div>
+            <div><span class="k">max |∇u|</span> <span class="v" id="rGx">0.000</span></div>
+            <div><span class="k">payload total</span> <span class="v" id="rPT">0.0</span></div>
+            <div><span class="k">centroid x</span> <span class="v" id="rCx">0.00</span></div>
+            <div><span class="k">centroid y</span> <span class="v" id="rCy">0.00</span></div>
+            <div><span class="k">drift</span> <span class="v" id="rDrift">0.00</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            <em>An excitable wave with handedness produces
+            coherent transport of inert matter even with no
+            memory in the pipeline.</em>
+        </p>
+        <p>
+            R22 needed a memory: the past was compiled into
+            geometry, and that geometry pulled matter around.
+            R23 strips the memory out. There is nothing but the
+            current wave and the current payload. Each wavefront
+            passage gives the payload a kick; in a symmetric
+            system the kicks cancel. A spiral is not symmetric.
+            Its arms always sweep the same way. The kicks
+            accumulate. The wave moves the cargo without ever
+            remembering it had.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> Payload starts in the
+                upper-left. It first jostles in place, then
+                starts orbiting the spiral as the arms reach
+                further out.
+            </li>
+            <li>
+                <strong>α = 0.</strong> No transport. Sanity
+                check that the drift comes from the wave, not
+                from any background flow or initial conditions.
+            </li>
+            <li>
+                <strong>Drop several payloads.</strong> Click in
+                different quadrants. Each blob drifts in the
+                same rotational sense — chirality is global, not
+                local.
+            </li>
+            <li>
+                <strong>Compare with R22.</strong> R22 needed
+                hundreds of tissue-time units to build the
+                memory map before the dye drifted. R23 starts
+                transporting immediately — the wave does not
+                wait to be remembered.
+            </li>
+            <li>
+                <strong>Strong α.</strong> The payload smears
+                along each wavefront before the next one
+                arrives. Motion is wavefront-aligned, not net.
+            </li>
+        </ol>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

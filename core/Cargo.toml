@@ -24,6 +24,7 @@ members = [
     "r20-events-seed-matter",
     "r21-sensor-and-alarm",
     "r22-memory-shapes-flow",
+    "r23-excitable-courier",
     "server",
     "flow-wasm",
 ]
