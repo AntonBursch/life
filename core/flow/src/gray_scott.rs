@@ -298,6 +298,53 @@ impl GrayScott2D {
         }
     }
 
+    /// One forward-Euler step with a *per-cell* feed rate. The kill rate
+    /// stays uniform. Composition primitive: a separate substrate (e.g. a
+    /// Kuramoto phase layer) computes `feed_field`, then drives the
+    /// chemistry through it.
+    pub fn step_with_feed_field(
+        &mut self,
+        feed_field: &[f64],
+    ) -> Result<(), GrayScottError> {
+        if feed_field.len() != self.u.len() {
+            return Err(GrayScottError::NonPositiveSize);
+        }
+        let w = self.width;
+        let h = self.height;
+        let dx2 = self.dx * self.dx;
+        let k = self.kill;
+        let dt = self.dt;
+
+        for j in 0..h {
+            let jn = if j == 0 { h - 1 } else { j - 1 };
+            let js = if j + 1 == h { 0 } else { j + 1 };
+            let row = j * w;
+            let row_n = jn * w;
+            let row_s = js * w;
+            for i in 0..w {
+                let iw = if i == 0 { w - 1 } else { i - 1 };
+                let ie = if i + 1 == w { 0 } else { i + 1 };
+                let c = row + i;
+                let u_c = self.u[c];
+                let v_c = self.v[c];
+                let lap_u = self.u[row + iw] + self.u[row + ie]
+                    + self.u[row_n + i] + self.u[row_s + i] - 4.0 * u_c;
+                let lap_v = self.v[row + iw] + self.v[row + ie]
+                    + self.v[row_n + i] + self.v[row_s + i] - 4.0 * v_c;
+                let uvv = u_c * v_c * v_c;
+                let f = feed_field[c];
+                self.u_next[c] = u_c + dt * (self.du * lap_u / dx2 - uvv + f * (1.0 - u_c));
+                self.v_next[c] = v_c + dt * (self.dv * lap_v / dx2 + uvv - (f + k) * v_c);
+            }
+        }
+
+        core::mem::swap(&mut self.u, &mut self.u_next);
+        core::mem::swap(&mut self.v, &mut self.v_next);
+        self.time += self.dt;
+        self.steps += 1;
+        Ok(())
+    }
+
     /// Mean of V across the grid. Useful as a one-number summary of how
     /// much "product" the system is sustaining.
     pub fn mean_v(&self) -> f64 {

@@ -12,6 +12,7 @@ members = [
     "r08-cahn-hilliard",
     "r09-kuramoto",
     "r10-coupled",
+    "r11-phase-drives-rxn",
     "server",
     "flow-wasm",
 ]

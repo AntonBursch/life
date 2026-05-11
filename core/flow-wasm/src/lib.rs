@@ -4,7 +4,7 @@
 //! JS/Rust interop and exposes the diffusion field in a form a Canvas
 //! renderer can consume cheaply.
 
-use flow::{excitable_gate, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
+use flow::{excitable_gate, phase_to_scalar_field, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -835,4 +835,166 @@ impl WasmCoupledR10 {
     pub fn u_field(&self) -> Vec<f64> { self.tissue.u().to_vec() }
     pub fn theta_field(&self) -> Vec<f64> { self.phase.theta().to_vec() }
     pub fn k_coupling_field(&self) -> Vec<f64> { self.k_field.clone() }
+}
+
+// =====================================================================
+// R11: phase drives reaction. A Kuramoto phase layer modulates the
+// per-cell Gray-Scott feed rate via `phase_to_scalar_field`. When the
+// phase layer locks, the chemistry breathes in unison; when it does
+// not, regions starve and grow at independent times. Reverse arrow of
+// R10.
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR11 {
+    chem: GrayScott2D,
+    phase: Kuramoto2D,
+    feed_field: Vec<f64>,
+    f_lo: f64,
+    f_hi: f64,
+    // ring of recent mean(V) samples for the "breathing depth" readout
+    v_mean_ring: Vec<f64>,
+    v_mean_idx: usize,
+    v_mean_filled: bool,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR11 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        // Gray-Scott params
+        du: f64,
+        dv: f64,
+        kill: f64,
+        dx: f64,
+        dt_chem: f64,
+        // Kuramoto params
+        dt_phase: f64,
+        coupling: f64,
+        // Feed-modulation envelope
+        f_lo: f64,
+        f_hi: f64,
+    ) -> Result<WasmCoupledR11, JsError> {
+        let f_seed = 0.5 * (f_lo + f_hi);
+        let chem = GrayScott2D::new(width, height, du, dv, f_seed, kill, dx, dt_chem)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let phase = Kuramoto2D::new(width, height, coupling, dt_phase)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(Self {
+            chem,
+            phase,
+            feed_field: vec![f_seed; width * height],
+            f_lo,
+            f_hi,
+            v_mean_ring: vec![0.0; 240],
+            v_mean_idx: 0,
+            v_mean_filled: false,
+        })
+    }
+
+    pub fn step(&mut self) {
+        self.phase.step();
+        let _ = phase_to_scalar_field(
+            self.phase.theta(),
+            self.f_lo,
+            self.f_hi,
+            &mut self.feed_field,
+        );
+        let _ = self.chem.step_with_feed_field(&self.feed_field);
+
+        // Track recent mean(V).
+        let v = self.chem.v();
+        let n = v.len() as f64;
+        let m: f64 = v.iter().sum::<f64>() / n;
+        self.v_mean_ring[self.v_mean_idx] = m;
+        self.v_mean_idx = (self.v_mean_idx + 1) % self.v_mean_ring.len();
+        if self.v_mean_idx == 0 { self.v_mean_filled = true; }
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_blob(&mut self, cx: usize, cy: usize, r: usize) {
+        self.chem.seed_blob(cx, cy, r);
+    }
+    pub fn reset_chem(&mut self) { self.chem.reset(); }
+
+    pub fn set_natural_frequencies(&mut self, sigma: f64, seed: u32) {
+        self.phase.set_natural_frequencies(sigma, seed as u64);
+    }
+    pub fn randomise_phases(&mut self, seed: u32) {
+        self.phase.randomise_phases(seed as u64);
+    }
+    pub fn set_coupling(&mut self, k: f64) { self.phase.set_coupling(k); }
+    pub fn set_f_lo(&mut self, v: f64) { if v >= 0.0 { self.f_lo = v; } }
+    pub fn set_f_hi(&mut self, v: f64) { if v >= 0.0 { self.f_hi = v; } }
+    pub fn set_kill(&mut self, v: f64) { self.chem.set_kill(v); }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.chem.width() }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.chem.height() }
+    #[wasm_bindgen(getter)]
+    pub fn phase_time(&self) -> f64 { self.phase.time() }
+    #[wasm_bindgen(getter)]
+    pub fn chem_time(&self) -> f64 { self.chem.time() }
+    #[wasm_bindgen(getter)]
+    pub fn order_parameter(&self) -> f64 { self.phase.order_parameter() }
+    #[wasm_bindgen(getter)]
+    pub fn f_lo(&self) -> f64 { self.f_lo }
+    #[wasm_bindgen(getter)]
+    pub fn f_hi(&self) -> f64 { self.f_hi }
+    #[wasm_bindgen(getter)]
+    pub fn coupling(&self) -> f64 { self.phase.coupling() }
+    #[wasm_bindgen(getter)]
+    pub fn total_v(&self) -> f64 {
+        let v = self.chem.v();
+        v.iter().sum::<f64>() / (v.len() as f64)
+    }
+    #[wasm_bindgen(getter)]
+    pub fn v_coverage(&self) -> f64 {
+        let v = self.chem.v();
+        v.iter().filter(|x| **x > 0.2).count() as f64 / (v.len() as f64)
+    }
+
+    /// Standard deviation of mean(V) over the last ~240 steps,
+    /// normalised by its mean. This is the "breathing depth": when
+    /// phases lock, total V rises and falls together and this number
+    /// grows; when they don't, it stays small.
+    pub fn breathing_depth(&self) -> f64 {
+        let len = if self.v_mean_filled { self.v_mean_ring.len() } else { self.v_mean_idx };
+        if len < 8 { return 0.0; }
+        let slice = &self.v_mean_ring[..len];
+        let mean: f64 = slice.iter().sum::<f64>() / (len as f64);
+        if mean.abs() < 1e-9 { return 0.0; }
+        let var: f64 = slice.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (len as f64);
+        var.sqrt() / mean.abs()
+    }
+
+    /// Local phase correlation, as in R10.
+    pub fn local_correlation(&self) -> f64 {
+        let w = self.phase.width();
+        let h = self.phase.height();
+        let theta = self.phase.theta();
+        let mut acc = 0.0;
+        let mut count = 0usize;
+        for j in 0..h {
+            let jp = if j == h - 1 { 0 } else { j + 1 };
+            for i in 0..w {
+                let ip = if i == w - 1 { 0 } else { i + 1 };
+                let t0 = theta[j * w + i];
+                acc += (theta[j * w + ip] - t0).cos();
+                acc += (theta[jp * w + i] - t0).cos();
+                count += 2;
+            }
+        }
+        if count == 0 { 0.0 } else { acc / (count as f64) }
+    }
+
+    pub fn theta_field(&self) -> Vec<f64> { self.phase.theta().to_vec() }
+    pub fn feed_field(&self) -> Vec<f64> { self.feed_field.clone() }
+    pub fn v_field(&self) -> Vec<f64> { self.chem.v().to_vec() }
+    pub fn u_field(&self) -> Vec<f64> { self.chem.u().to_vec() }
 }

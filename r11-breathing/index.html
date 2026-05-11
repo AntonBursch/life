@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R11 — Phase drives reaction · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .triple {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 12px;
+                margin: 12px 0;
+            }
+            .triple figure { margin: 0; }
+            .triple canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .triple figcaption {
+                font-size: 0.85em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r10-coupled/">← R10</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R11 — Phase drives reaction</h1>
+        <p class="muted">
+            The second composition rung. Same alphabet as R10
+            (Kuramoto phases + Gray-Scott chemistry) but the arrow
+            runs the other way. Here the phase layer is upstream:
+            wherever the phase clock is at its peak, the chemistry's
+            feed rate <em>F</em> is high and patterns grow; at the
+            trough, <em>F</em> is low and patterns starve. When the
+            phase layer locks globally, the whole canvas
+            <strong>breathes</strong> as one organism. When it
+            doesn't, regions breathe at independent times.
+        </p>
+
+        <div class="triple">
+            <figure>
+                <canvas id="phaseCanvas"></canvas>
+                <figcaption>Phase clock <em>θ</em> (R9)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="feedCanvas"></canvas>
+                <figcaption>Feed field <em>F</em>(x,t)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="vCanvas"></canvas>
+                <figcaption>Gray-Scott inhibitor <em>V</em> (R4)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseed">↻ Reseed phases</button>
+            <button id="reblob">↻ New chemistry seed</button>
+        </div>
+
+        <div class="controls">
+            <label for="coup">phase coupling K</label>
+            <input id="coup" type="range" min="0" max="8" value="4" step="0.1" />
+            <span id="coupV" class="value">4.0</span>
+
+            <label for="sval">frequency spread σ</label>
+            <input id="sval" type="range" min="0" max="0.6" value="0.05" step="0.01" />
+            <span id="svalV" class="value">0.05</span>
+
+            <label for="fhi">peak feed F<sub>hi</sub></label>
+            <input id="fhi" type="range" min="0.02" max="0.10" value="0.078" step="0.001" />
+            <span id="fhiV" class="value">0.078</span>
+
+            <label for="flo">trough feed F<sub>lo</sub></label>
+            <input id="flo" type="range" min="0.00" max="0.06" value="0.020" step="0.001" />
+            <span id="floV" class="value">0.020</span>
+
+            <label for="kill">kill rate k</label>
+            <input id="kill" type="range" min="0.040" max="0.070" value="0.062" step="0.001" />
+            <span id="killV" class="value">0.062</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="80" value="20" step="1" />
+            <span id="speedV" class="value">20</span>
+        </div>
+
+        <p class="muted">
+            Watch the middle canvas: the feed field is a slow
+            magma-coloured wash whose pattern is dictated by the
+            phase clock to its left. Watch the right canvas: the
+            Gray-Scott spots grow in the bright regions of the feed
+            field and dissolve in the dark ones. When the phase
+            field locks, the feed field becomes one big breathing
+            disk and the chemistry breathes with it.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (chem)</span> <span class="v" id="rTc">0</span></div>
+            <div>
+                <span class="k">order parameter r</span>
+                <span class="v" id="rR">0.000</span>
+            </div>
+            <div>
+                <span class="k">local correlation</span>
+                <span class="v" id="rLoc">0.000</span>
+            </div>
+            <div>
+                <span class="k">mean V</span>
+                <span class="v" id="rV">0.000</span>
+            </div>
+            <div>
+                <span class="k">V coverage</span>
+                <span class="v" id="rCov">0.000</span>
+            </div>
+            <div>
+                <span class="k">breathing depth</span>
+                <span class="v" id="rBr">0.000</span>
+            </div>
+            <div>
+                <span class="k">regime</span>
+                <span class="v" id="rRegime">cold</span>
+            </div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            R10 wired excitation into coupling. R11 wires phase into
+            a reaction rate. Both are the same recipe — one substrate
+            sets a per-cell parameter of another — but they live on
+            different axes, and they produce different phenomena.
+            R10 made <em>sync follow the wave</em>. R11 makes
+            <em>chemistry breathe with the clock</em>. The composition
+            operator this time is even simpler than R10's gate: a
+            smooth cosine map <code>0.5·(1 + cos&nbsp;θ)</code> from
+            phase to a number in [F<sub>lo</sub>, F<sub>hi</sub>]. No
+            threshold, no sharpness, no parameters — phase has its
+            own native zero-to-one cycle, we just plant it on top of
+            the feed rate.
+        </p>
+
+        <p>
+            The interesting thing is what falls out. Gray-Scott has a
+            well-known parameter map: at high <em>F</em> it makes
+            spots; at low <em>F</em> spots dissolve; in a narrow band
+            it makes mazes and stripes. By making <em>F</em> a slow
+            function of time on every cell, R11 walks each cell
+            through this map on the phase period. If neighbours share
+            a phase, they walk through the map in lockstep — a
+            breathing organism. If they don't, you get something more
+            like asynchronous tissue, regions of growth and decay
+            tiled in space.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>K = 4 (default).</strong> Phases lock locally
+                but not globally; you see patches of synchronously
+                breathing spots, separated by phase walls.
+            </li>
+            <li>
+                <strong>Slide K to 0.</strong> Phases are independent.
+                Every cell's feed rate oscillates at its own
+                frequency. The chemistry can't ever settle — it
+                degenerates to noise. Sync was carrying the rhythm.
+            </li>
+            <li>
+                <strong>Slide K to 8 and σ to 0.</strong> Identical
+                oscillators, strong coupling. The phase field
+                converges to one global beat. The middle canvas now
+                pulses as a single colour. The right canvas grows a
+                full disk of spots, then starves them off, then
+                regrows. That is one organism breathing.
+            </li>
+            <li>
+                <strong>Slide F<sub>hi</sub> down to 0.05.</strong>
+                Peak feed is no longer high enough to grow spots
+                anywhere. The right canvas stays nearly empty no
+                matter how synchronised the phase field is. The
+                composition can only do as much as the underlying
+                rung allows.
+            </li>
+            <li>
+                <strong>Slide F<sub>lo</sub> up to 0.05.</strong>
+                Trough feed is now in the spot-friendly regime too.
+                There is no longer a starvation phase. The chemistry
+                stops breathing and just fills the canvas.
+            </li>
+            <li>
+                <strong>Reseed phases.</strong> The chemistry's
+                history is preserved; only the rhythm changes. Watch
+                the breathing pattern re-organise on top of the
+                existing pattern.
+            </li>
+        </ol>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>Breathing depth.</strong> The readout tracks
+                the temporal std of mean(V) over a few hundred
+                frames, normalised by its mean. When phases lock,
+                this number climbs above 0.2 — the whole field is
+                visibly rising and falling. When they don't, it
+                stays below 0.05.
+            </li>
+            <li>
+                <strong>Pattern-on-pattern.</strong> R11 is not just
+                "make Gray-Scott blink". The spots' spatial pattern
+                still obeys Gray-Scott geometry: corals, dots,
+                stripes depending on the local <em>F</em>. The phase
+                layer modulates which regime each region is in,
+                <em>and</em> when. Two timescales, two pattern
+                generators, one canvas.
+            </li>
+            <li>
+                <strong>The phase clock can be slower than the
+                chemistry.</strong> Walk the speed slider down: you
+                will see the feed field's colour change slowly
+                across many chemistry steps. Real cortical rhythms
+                live on top of much faster cellular machinery — same
+                shape.
+            </li>
+            <li>
+                <strong>No global lock without enough K.</strong>
+                Just like R9 had a critical coupling, R11 inherits
+                it. The breathing organism is a phase of the
+                composition, not the only state.
+            </li>
+        </ul>
+
+        <h2>why this rung matters</h2>
+        <p>
+            R10 and R11 are the same coupling pattern run in
+            opposite directions on the same pair of substrates. Each
+            substrate can be a <em>driver</em> or a <em>driven</em>
+            layer. That is the smallest possible demonstration that
+            the substrate menu and the coupling-operator menu are
+            actually composable in the algebraic sense: you can
+            point the arrow either way and the result is meaningful.
+            From here the alphabet expands by adding substrates (R12,
+            R13, …) and by adding coupling operators
+            (<code>phase_to_scalar_field</code> joins
+            <code>excitable_gate</code> in the operator menu). Apps
+            are sentences built out of these two menus.
+        </p>
+
+        <p>
+            Concretely: R11 is the textbook picture of a
+            <em>phase-locked metabolism</em> — circadian rhythms
+            modulating gene expression, gamma rhythms gating
+            neurotransmitter release, breathing rhythms shaping
+            blood-vessel reaction. The math is the same in every
+            case: a slow clock multiplies a fast reaction's rate
+            constant. We did it here with one cosine.
+        </p>
+
+        <p class="muted">
+            Math + code:
+            <code>flow::GrayScott2D::step_with_feed_field</code> and
+            <code>flow::phase_to_scalar_field</code>. Next rung is
+            another sentence in the same alphabet.
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

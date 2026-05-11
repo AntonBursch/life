@@ -85,6 +85,30 @@ impl std::fmt::Display for CouplingError {
     }
 }
 
+/// Map a phase field `theta` to a per-cell scalar control field, written
+/// into `out`. Uses `g = 0.5 * (1 + cos(theta))`, which is `1` at the
+/// peak of the cycle (`theta = 0`) and `0` at the trough
+/// (`theta = ±pi`). The output is then `lo + (hi - lo) * g`.
+///
+/// This is the natural way to turn a phase clock into a rate
+/// modulator: the modulated parameter oscillates between `lo` and `hi`
+/// in time with the phase.
+pub fn phase_to_scalar_field(
+    theta: &[f64],
+    lo: f64,
+    hi: f64,
+    out: &mut [f64],
+) -> Result<(), CouplingError> {
+    if theta.len() != out.len() {
+        return Err(CouplingError::SizeMismatch);
+    }
+    for (t, o) in theta.iter().zip(out.iter_mut()) {
+        let g = 0.5 * (1.0 + t.cos());
+        *o = lo + (hi - lo) * g;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,8 +166,31 @@ mod tests {
     }
 
     #[test]
+    fn phase_to_scalar_extremes() {
+        let theta = vec![0.0, std::f64::consts::PI, -std::f64::consts::PI, 0.5 * std::f64::consts::PI];
+        let mut out = vec![0.0_f64; 4];
+        phase_to_scalar_field(&theta, 0.02, 0.06, &mut out).unwrap();
+        // theta = 0 -> peak -> hi
+        assert!((out[0] - 0.06).abs() < 1e-12);
+        // theta = +-pi -> trough -> lo
+        assert!((out[1] - 0.02).abs() < 1e-12);
+        assert!((out[2] - 0.02).abs() < 1e-12);
+        // theta = pi/2 -> midpoint
+        assert!((out[3] - 0.04).abs() < 1e-12);
+    }
+
+    #[test]
+    fn phase_to_scalar_size_mismatch() {
+        let theta = vec![0.0; 5];
+        let mut out = vec![0.0; 4];
+        assert_eq!(
+            phase_to_scalar_field(&theta, 0.0, 1.0, &mut out),
+            Err(CouplingError::SizeMismatch)
+        );
+    }
+
+    #[test]
     fn gate_drives_kuramoto_layer_into_partial_sync() {
-        // The headline composition: an "excited" patch (high u) creates
         // a strong-coupling island; the rest stays weakly coupled.
         // Inside the patch, the local population should synchronise
         // measurably more than the global average.
