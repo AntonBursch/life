@@ -4,7 +4,7 @@
 //! JS/Rust interop and exposes the diffusion field in a form a Canvas
 //! renderer can consume cheaply.
 
-use flow::{AdvectionDiffusion1D, Barkley2D, BoundaryCondition, Convection2D, Diffusion1D, GrayScott2D, SwiftHohenberg2D};
+use flow::{AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, SwiftHohenberg2D};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -578,4 +578,62 @@ impl WasmBarkley2D {
 
     pub fn u_field(&self) -> Vec<f64> { self.inner.u().to_vec() }
     pub fn v_field(&self) -> Vec<f64> { self.inner.v().to_vec() }
+}
+
+/// R8 — Cahn–Hilliard phase separation. One conserved scalar field `c`
+/// that splits into two bulk phases and coarsens forever without drive.
+#[wasm_bindgen]
+pub struct WasmCahnHilliard2D {
+    inner: CahnHilliard2D,
+}
+
+#[wasm_bindgen]
+impl WasmCahnHilliard2D {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        mobility: f64,
+        kappa: f64,
+        dx: f64,
+        dt: f64,
+    ) -> Result<WasmCahnHilliard2D, JsError> {
+        let inner = CahnHilliard2D::new(width, height, mobility, kappa, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    pub fn step(&mut self) { self.inner.step(); }
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.inner.step(); }
+    }
+    pub fn reset(&mut self) { self.inner.reset(); }
+    pub fn seed_noise(&mut self, amplitude: f64, mean: f64, seed: u32) {
+        self.inner.seed_noise(amplitude, mean, seed as u64);
+    }
+    pub fn set_mobility(&mut self, m: f64) { self.inner.set_mobility(m); }
+    pub fn set_kappa(&mut self, k: f64) { self.inner.set_kappa(k); }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.inner.width() }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.inner.height() }
+    #[wasm_bindgen(getter)]
+    pub fn time(&self) -> f64 { self.inner.time() }
+    #[wasm_bindgen(getter)]
+    pub fn mobility(&self) -> f64 { self.inner.mobility() }
+    #[wasm_bindgen(getter)]
+    pub fn kappa(&self) -> f64 { self.inner.kappa() }
+    #[wasm_bindgen(getter)]
+    pub fn mean_c(&self) -> f64 { self.inner.mean_c() }
+    #[wasm_bindgen(getter)]
+    pub fn variance_c(&self) -> f64 { self.inner.variance_c() }
+    #[wasm_bindgen(getter)]
+    pub fn max_abs_c(&self) -> f64 { self.inner.max_abs_c() }
+    #[wasm_bindgen(getter)]
+    pub fn bulk_fraction(&self) -> f64 { self.inner.bulk_fraction() }
+    #[wasm_bindgen(getter)]
+    pub fn free_energy(&self) -> f64 { self.inner.free_energy() }
+
+    pub fn c_field(&self) -> Vec<f64> { self.inner.c().to_vec() }
 }

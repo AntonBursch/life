@@ -9,6 +9,7 @@ members = [
     "r05-convection",
     "r06-swift-hohenberg",
     "r07-excitable",
+    "r08-cahn-hilliard",
     "server",
     "flow-wasm",
 ]

@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R8 — Cahn–Hilliard · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r07-excitable/">← R7</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R8 — Phase separation</h1>
+        <p class="muted">
+            R7 was the rung where pattern moved. R8 is its opposite. The
+            field is <em>conserved</em> — total mass is fixed forever,
+            nothing flows in, nothing flows out. There is no pump.
+            And yet, from a smooth start, the field separates itself
+            into two phases, the boundaries between them slowly merge,
+            and the whole tissue keeps reorganising for as long as
+            you watch. R7 needs nothing maintained because it's an
+            autonomous excitable medium. R8 needs nothing maintained
+            because it's literally rolling downhill in free energy
+            — the only motion is the system relaxing into deeper
+            and deeper wells, never getting to the bottom because
+            mass conservation won't let it. Pattern with
+            <em>territory</em> instead of pattern with direction.
+        </p>
+
+        <div class="canvas-wrap">
+            <canvas
+                id="field"
+                style="
+                    height: 380px;
+                    aspect-ratio: 1 / 1;
+                "
+            ></canvas>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseed">↻ Reseed (zero mean)</button>
+            <button id="biased">↻ Reseed (biased +0.3)</button>
+        </div>
+
+        <div class="controls">
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="300" value="80" step="10" />
+            <span id="speedV" class="value">80</span>
+
+            <label for="kval">surface tension κ</label>
+            <input id="kval" type="range" min="0.3" max="2.0" value="1.0" step="0.05" />
+            <span id="kvalV" class="value">1.00</span>
+        </div>
+
+        <p class="muted">
+            κ controls how much the interfaces cost. Larger κ → thicker
+            walls between phases and slower coarsening; smaller κ →
+            sharper interfaces and faster mergers.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">time</span> <span class="v" id="rT">0</span></div>
+            <div>
+                <span class="k">⟨c⟩</span>
+                <span class="v" id="rMean">0</span>
+            </div>
+            <div>
+                <span class="k">mass drift</span>
+                <span class="v" id="rDrift">0</span>
+            </div>
+            <div>
+                <span class="k">variance(c)</span>
+                <span class="v" id="rVar">0</span>
+            </div>
+            <div>
+                <span class="k">bulk fraction</span>
+                <span class="v" id="rBulk">0.000</span>
+            </div>
+            <div>
+                <span class="k">free energy</span>
+                <span class="v" id="rF">0</span>
+            </div>
+            <div>
+                <span class="k">regime</span>
+                <span class="v" id="rRegime">smooth</span>
+            </div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            Imagine a thin film of a binary alloy that you've just
+            quenched from a high temperature where the two metals
+            were happily mixed. Below some critical temperature, the
+            mixture is no longer stable — the metals want to
+            separate. But they can't just teleport apart; they have
+            to diffuse, atom by atom, and the total amount of each
+            metal is fixed. The only thing that can change is the
+            local concentration <em>c</em>. The free energy of the
+            film has two equal wells, at <em>c</em>=−1 (all of metal
+            A) and <em>c</em>=+1 (all of metal B), separated by a
+            hump at <em>c</em>=0 (the uniformly mixed state). The
+            uniform state is balanced on the hump. A tiny ripple is
+            enough to start it sliding down.
+        </p>
+        <p>
+            Two competing effects then sculpt the field. The bulk
+            energy wants every point to be in one of the two wells —
+            so concentration values near zero are pushed outward,
+            toward ±1. The interface energy wants gradients to be
+            small — so it punishes sharp boundaries between regions.
+            The system balances these into walls of a fixed width.
+            And then the slowest, most patient process begins: small
+            domains, which have a lot of wall per unit volume, leak
+            material through the surrounding bulk to nearby larger
+            domains, which have less. Small domains shrink and
+            vanish; large domains grow. Average domain size grows
+            like <em>t</em><sup>1/3</sup>. The field is always
+            mid-organisation. It never finishes.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Reseed (zero mean).</strong> Start from a
+                near-uniform field with tiny zero-mean noise. The
+                canvas is almost flat. Within a few frames a fine
+                spinodal grain appears — pixel-scale dots and worms
+                — then the worms thicken into a bicontinuous
+                labyrinth, then the labyrinth's smallest features
+                start dissolving into their neighbours.
+            </li>
+            <li>
+                <strong>Watch the mass drift.</strong> The
+                <code>mass drift</code> readout shows how much the
+                mean has wandered from its initial value. It should
+                stay glued to zero to about 14 decimal places, no
+                matter how long you run. This is the conservation
+                law made visible.
+            </li>
+            <li>
+                <strong>Watch the free energy.</strong> It only ever
+                falls. There is no resurgence, no oscillation, no
+                excitation. Every coarsening event removes a little
+                interface and the energy drops.
+            </li>
+            <li>
+                <strong>Reseed (biased +0.3).</strong> Now there's
+                more of one phase than the other. The minority phase
+                forms isolated droplets instead of a labyrinth, and
+                the droplets coarsen by Ostwald ripening — small
+                ones evaporate, big ones grow.
+            </li>
+            <li>
+                <strong>Pull surface tension up.</strong> Drag
+                <code>κ</code> from 1.0 toward 2.0. Walls get
+                thicker, the labyrinth gets coarser at any given
+                time, mergers slow down. The whole movie plays out
+                in slower geometry.
+            </li>
+            <li>
+                <strong>Pull surface tension down.</strong> Drag κ
+                toward 0.3. Walls get razor-sharp, the pattern
+                gets visibly finer, and the system separates faster.
+                At very small κ you start to push the explicit
+                solver — you'd need a smaller dt to stay accurate.
+            </li>
+        </ol>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>No drive.</strong> Nothing pumps. The film
+                is just sitting there. The motion you see is
+                entirely the system relaxing into deeper free-energy
+                wells while obeying mass conservation. R7's spirals
+                run on the standing energy in resting cells. R8's
+                coarsening runs on the gradient energy stored at
+                interfaces — and uses it up.
+            </li>
+            <li>
+                <strong>Conservation made visible.</strong> R4
+                Gray–Scott also has two species, but it's reactive —
+                <em>U</em> can become <em>V</em>. R8's
+                <em>c</em> cannot become anything. The only way the
+                field changes locally is by something moving past
+                its boundary, and the boundary integral is zero on
+                the torus. Mass is invariant by construction.
+            </li>
+            <li>
+                <strong>Power-law slowdown.</strong> Watch the
+                <code>free energy</code> readout decay. Early on
+                it falls fast; late on it crawls. The characteristic
+                domain length grows like <em>t</em><sup>1/3</sup>,
+                which means it takes eight times longer to double a
+                length scale every time you double it. Coarsening
+                is forever — but only because forever is how long
+                it takes to be done.
+            </li>
+        </ul>
+
+        <h2>why this rung matters</h2>
+        <p>
+            R7 made the case that you can have non-trivial pattern
+            with zero external drive, by storing the "drive" in the
+            resting cells themselves. R8 makes the opposite case:
+            you can have non-trivial pattern with zero drive
+            <em>and</em> zero stored excitability — just a free
+            energy and a conservation law. The two extremes bracket
+            a real claim. Most of the systems we care about
+            biologically and cognitively live somewhere in between:
+            partly dissipative (R7-like), partly conservative
+            (R8-like), with the conserved quantities defining what
+            <em>can't</em> happen and the excitable parts deciding
+            what <em>does</em>.
+        </p>
+        <p>
+            Cahn–Hilliard is also the cleanest available example of
+            "the long, slow tail" — a process that never finishes
+            because what's left to do gets harder as it goes. The
+            developmental biology of any tissue with separating
+            phases (lipid rafts, cell-sorting, polymer blends) lives
+            in this regime. So does, arguably, a lot of long-term
+            memory: not flow, not excitation, just very slowly
+            settling territories.
+        </p>
+
+        <p class="muted">
+            Math + code in
+            <a href="../notes/01-flow.md">notes/01-flow.md</a>. Next
+            rung: <em>oscillators that synchronise</em>. The R9
+            substrate replaces conservation and excitation with
+            <em>phase</em> — a population of clocks that pull each
+            other into rhythm. The unit of information becomes
+            timing.
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>
