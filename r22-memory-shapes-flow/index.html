@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R22 — Memory shapes flow · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .tri {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .tri figure { margin: 0; }
+            .tri canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .tri figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .tri { grid-template-columns: repeat(1, 1fr); }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r21-sensor-and-alarm/">← R21</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R22 — Memory shapes flow</h1>
+        <p class="muted">
+            Phase B (B3). No new operator. Three Phase-A
+            primitives wired in a chain:
+            <code>integrate_field</code> (R19) accumulates a
+            leaky memory of the Barkley activator u;
+            <code>gradient_field</code> (R17) turns that scalar
+            memory map into a velocity vector
+            <code>α · ∇memory</code>;
+            <code>advect_by</code> (R17) transports a passive
+            dye by that velocity. The dye never sees the wave.
+            It sees only the wave's integrated trace.
+        </p>
+
+        <div class="tri">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>1 · u (Barkley activator)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="memCanvas"></canvas>
+                <figcaption>2 · memory = ∫ u (leaky)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="dyeCanvas"></canvas>
+                <figcaption>3 · dye (advected by α · ∇memory)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseedWave">↻ Reseed spiral</button>
+            <button id="resetMem">↻ Reset memory</button>
+            <button id="reseedDye">⚇ Drop dye blob</button>
+            <button id="resetDye">↻ Clear dye</button>
+            <button id="kick">⚡ Kick centre</button>
+        </div>
+
+        <div class="controls">
+            <label for="leak">leak (1/τ)</label>
+            <input id="leak" type="range" min="0.02" max="1.0" value="0.05" step="0.01" />
+            <span id="leakV" class="value">0.05</span>
+
+            <label for="alpha">α (memory → speed)</label>
+            <input id="alpha" type="range" min="0" max="12" value="4" step="0.5" />
+            <span id="alphaV" class="value">4.0</span>
+
+            <label for="eps">excitable ε</label>
+            <input id="eps" type="range" min="0.005" max="0.05" value="0.02" step="0.005" />
+            <span id="epsV" class="value">0.020</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="16" value="6" step="1" />
+            <span id="speedV" class="value">6</span>
+        </div>
+
+        <p class="muted">
+            Read in order. Panel 1: the wave. Panel 2: where
+            the wave has been (τ = 1/leak is the forgetting
+            time). Panel 3: a passive dye blob, advected by
+            <code>α · ∇memory</code>. The blob has no other
+            forces on it. If the dye drifts toward the spiral,
+            the only thing pulling it is the gradient of a map
+            the wave drew while it was passing — past visits
+            attract present matter.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (tissue)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">τ = 1/leak</span> <span class="v" id="rTau">20.0</span></div>
+            <div><span class="k">α</span> <span class="v" id="rAlpha">4.0</span></div>
+            <div><span class="k">max(memory)</span> <span class="v" id="rMemMx">0.000</span></div>
+            <div><span class="k">max|v|</span> <span class="v" id="rVmx">0.000</span></div>
+            <div><span class="k">dye total</span> <span class="v" id="rDyeT">0.0</span></div>
+            <div><span class="k">dye centroid x</span> <span class="v" id="rCx">0.0</span></div>
+            <div><span class="k">dye centroid y</span> <span class="v" id="rCy">0.0</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            <em>The present motion of matter can depend on what
+            happened in the past — not via any current state of
+            an active substrate, but via the integrated trace
+            the past left behind.</em>
+        </p>
+        <p>
+            R7 produced a wave. R17 transported dye by a
+            velocity field. R19 turned a time-series into a
+            spatial memory. Until this rung the three were
+            separate stories. Here the memory becomes a force.
+            The dye does not "know" there is a wave; it never
+            samples u. It samples ∇memory — a quantity that did
+            not exist a hundred steps ago. Past activity has
+            been compiled into a present geometry, and matter
+            now obeys that geometry. It is the first rung where
+            time turns into force.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> The dye starts as a
+                blob to the right of the spiral. Centroid drifts
+                left over a few hundred tissue-time units.
+            </li>
+            <li>
+                <strong>α = 0.</strong> Memory still builds, but
+                the dye is decoupled from it. Blob stays put
+                (small numerical diffusion only). Sanity check
+                that motion comes from memory, not from
+                anywhere else.
+            </li>
+            <li>
+                <strong>Short memory (leak = 1.0, τ = 1).</strong>
+                Memory tracks the instantaneous wave too closely
+                — its gradient flickers with each wavefront.
+                Dye gets stirred locally but doesn't drift
+                anywhere coherent.
+            </li>
+            <li>
+                <strong>Long memory (leak = 0.02, τ = 50).</strong>
+                Memory builds up a slow, smooth bowl around the
+                spiral's territory. Dye drifts cleanly toward
+                the centre.
+            </li>
+            <li>
+                <strong>Reset memory mid-flight.</strong> The
+                dye stops drifting almost immediately. Velocity
+                is grad(memory); with no memory there is no
+                velocity. The wave passing now has no effect on
+                the dye until memory rebuilds. "Forgetting"
+                turns the dye loose.
+            </li>
+            <li>
+                <strong>Drop dye blob in different spots.</strong>
+                Each blob drifts toward the memory hotspot from
+                its own position. The same geometry pulls every
+                blob; the geometry was authored by the wave's
+                history.
+            </li>
+        </ol>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

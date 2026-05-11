@@ -2625,3 +2625,179 @@ impl WasmCoupledR21 {
         self.alarm.iter().map(|a| *a as f64).collect()
     }
 }
+
+// =====================================================================
+// WasmCoupledR22 -- Memory shapes flow. Phase B (B3).
+//
+// integrate_field(u, memory, dt, leak)   leaky integral of Barkley u
+// gradient_field(memory, ...)            memory -> velocity vector
+// advect_by(dye, alpha*grad, ...)        dye transported by velocity
+//
+// First rung where past activity shapes present motion. The dye does
+// not see u; it sees only grad(memory) -- the wave's integrated
+// trace.
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR22 {
+    tissue: Barkley2D,
+    memory: Vec<f64>,
+    gx: Vec<f64>,
+    gy: Vec<f64>,
+    dye: Vec<f64>,
+    dye_next: Vec<f64>,
+    leak: f64,
+    alpha: f64,
+    dt_step: f64,
+    dx: f64,
+    width: usize,
+    height: usize,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR22 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        diffusion: f64,
+        a: f64,
+        b: f64,
+        eps: f64,
+        dx: f64,
+        dt: f64,
+        leak: f64,
+        alpha: f64,
+    ) -> Result<WasmCoupledR22, JsError> {
+        let tissue = Barkley2D::new(width, height, diffusion, a, b, eps, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let n = width * height;
+        Ok(Self {
+            tissue,
+            memory: vec![0.0; n],
+            gx: vec![0.0; n],
+            gy: vec![0.0; n],
+            dye: vec![0.0; n],
+            dye_next: vec![0.0; n],
+            leak,
+            alpha,
+            dt_step: dt,
+            dx,
+            width,
+            height,
+        })
+    }
+
+    pub fn step(&mut self) {
+        self.tissue.step();
+        let u = self.tissue.u();
+        let _ = integrate_field(u, &mut self.memory, self.dt_step, self.leak);
+        let _ = gradient_field(&self.memory, self.width, self.height, self.dx, &mut self.gx, &mut self.gy);
+        for k in 0..self.gx.len() {
+            self.gx[k] *= self.alpha;
+            self.gy[k] *= self.alpha;
+        }
+        let _ = advect_by(
+            &self.dye, &self.gx, &self.gy,
+            self.width, self.height, self.dx, self.dt_step,
+            &mut self.dye_next,
+        );
+        std::mem::swap(&mut self.dye, &mut self.dye_next);
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_spiral(&mut self) { self.tissue.seed_spiral(); }
+
+    pub fn kick(&mut self, cx: usize, cy: usize, radius: usize, amplitude: f64) {
+        self.tissue.kick(cx, cy, radius, amplitude);
+    }
+
+    /// Place a Gaussian blob of dye at (cx, cy) with std dev `sigma`
+    /// and peak amplitude `amp`. Adds on top of existing dye.
+    pub fn seed_dye_blob(&mut self, cx: f64, cy: f64, sigma: f64, amp: f64) {
+        let s2 = (sigma * sigma).max(1e-6);
+        for j in 0..self.height {
+            for i in 0..self.width {
+                let dxp = i as f64 - cx;
+                let dyp = j as f64 - cy;
+                let r2 = dxp * dxp + dyp * dyp;
+                self.dye[j * self.width + i] += amp * (-r2 / (2.0 * s2)).exp();
+            }
+        }
+    }
+
+    pub fn reset_tissue(&mut self) { self.tissue.reset(); }
+    pub fn reset_memory(&mut self) {
+        for v in &mut self.memory { *v = 0.0; }
+    }
+    pub fn reset_dye(&mut self) {
+        for v in &mut self.dye { *v = 0.0; }
+        for v in &mut self.dye_next { *v = 0.0; }
+    }
+
+    pub fn set_leak(&mut self, leak: f64) { self.leak = leak.max(0.0); }
+    pub fn set_alpha(&mut self, alpha: f64) { self.alpha = alpha; }
+    pub fn set_a(&mut self, a: f64) { self.tissue.set_a(a); }
+    pub fn set_b(&mut self, b: f64) { self.tissue.set_b(b); }
+    pub fn set_eps(&mut self, e: f64) { self.tissue.set_eps(e); }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.width }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.height }
+    #[wasm_bindgen(getter)]
+    pub fn tissue_time(&self) -> f64 { self.tissue.time() }
+
+    pub fn u_mean(&self) -> f64 {
+        let u = self.tissue.u();
+        u.iter().sum::<f64>() / u.len() as f64
+    }
+    pub fn memory_max(&self) -> f64 {
+        self.memory.iter().cloned().fold(f64::NEG_INFINITY, f64::max).max(0.0)
+    }
+    pub fn memory_mean(&self) -> f64 {
+        self.memory.iter().sum::<f64>() / self.memory.len() as f64
+    }
+    pub fn velocity_max(&self) -> f64 {
+        (0..self.gx.len())
+            .map(|k| (self.gx[k] * self.gx[k] + self.gy[k] * self.gy[k]).sqrt())
+            .fold(f64::NEG_INFINITY, f64::max)
+            .max(0.0)
+    }
+    pub fn dye_total(&self) -> f64 { self.dye.iter().sum() }
+    pub fn dye_max(&self) -> f64 {
+        self.dye.iter().cloned().fold(f64::NEG_INFINITY, f64::max).max(0.0)
+    }
+    pub fn dye_centroid_x(&self) -> f64 {
+        let mut num = 0.0;
+        let mut den = 0.0;
+        for j in 0..self.height {
+            for i in 0..self.width {
+                let d = self.dye[j * self.width + i];
+                num += i as f64 * d;
+                den += d;
+            }
+        }
+        if den > 1e-12 { num / den } else { 0.0 }
+    }
+    pub fn dye_centroid_y(&self) -> f64 {
+        let mut num = 0.0;
+        let mut den = 0.0;
+        for j in 0..self.height {
+            for i in 0..self.width {
+                let d = self.dye[j * self.width + i];
+                num += j as f64 * d;
+                den += d;
+            }
+        }
+        if den > 1e-12 { num / den } else { 0.0 }
+    }
+
+    pub fn u_field(&self) -> Vec<f64> { self.tissue.u().to_vec() }
+    pub fn memory_field(&self) -> Vec<f64> { self.memory.clone() }
+    pub fn dye_field(&self) -> Vec<f64> { self.dye.clone() }
+    pub fn vx_field(&self) -> Vec<f64> { self.gx.clone() }
+    pub fn vy_field(&self) -> Vec<f64> { self.gy.clone() }
+}
