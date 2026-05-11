@@ -1537,4 +1537,157 @@ impl WasmCoupledR14 {
     pub fn chem_v_field(&self) -> Vec<f64> { self.chem.v().to_vec() }
 }
 
+// =====================================================================
+// R15: stripes route sync. Swift-Hohenberg (R6) self-organises a
+// striped/spotted pattern whose |u| sits near a positive peak inside
+// each stripe and crosses zero between stripes. bulk_gate (the same
+// operator as R12) reads |u| and produces a per-cell Kuramoto coupling
+// that is high inside stripes and low between them. Kuramoto then
+// locks along the SH stripes and drifts in the gaps.
+//
+// Third use of bulk_gate (after R12, R14). New substrate pair (R6 ^
+// R9) that no previous rung has touched. Confirms the operator as a
+// reusable primitive across distinct geometries.
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR15 {
+    pattern: SwiftHohenberg2D,
+    phase: Kuramoto2D,
+    k_field: Vec<f64>,
+    k_gap: f64,
+    k_stripe: f64,
+    half_width: f64,
+    sharpness: f64,
+    phase_substeps: u32,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR15 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        // Swift-Hohenberg
+        sh_r: f64,
+        sh_dx: f64,
+        sh_dt: f64,
+        // Kuramoto
+        ph_dt: f64,
+        // bulk_gate
+        k_gap: f64,
+        k_stripe: f64,
+        half_width: f64,
+        sharpness: f64,
+        phase_substeps: u32,
+    ) -> Result<WasmCoupledR15, JsError> {
+        let pattern = SwiftHohenberg2D::new(width, height, sh_r, sh_dx, sh_dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let phase = Kuramoto2D::new(width, height, 0.0, ph_dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(Self {
+            pattern, phase,
+            k_field: vec![0.0; width * height],
+            k_gap, k_stripe, half_width, sharpness,
+            phase_substeps: phase_substeps.max(1),
+        })
+    }
+
+    pub fn step(&mut self) {
+        self.pattern.step();
+        let _ = bulk_gate(
+            self.pattern.u(),
+            self.k_gap, self.k_stripe, self.half_width, self.sharpness,
+            &mut self.k_field,
+        );
+        for _ in 0..self.phase_substeps {
+            let _ = self.phase.step_with_coupling_field(&self.k_field);
+        }
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_pattern(&mut self, amplitude: f64) {
+        self.pattern.reset();
+        self.pattern.seed_noise(amplitude);
+    }
+    pub fn reset_pattern(&mut self) { self.pattern.reset(); }
+    pub fn set_natural_frequencies(&mut self, sigma: f64, seed: u32) {
+        self.phase.set_natural_frequencies(sigma, seed as u64);
+    }
+    pub fn randomise_phases(&mut self, seed: u32) {
+        self.phase.randomise_phases(seed as u64);
+    }
+    pub fn set_r(&mut self, v: f64) { self.pattern.set_r(v); }
+    pub fn set_k_gap(&mut self, v: f64) { if v >= 0.0 { self.k_gap = v; } }
+    pub fn set_k_stripe(&mut self, v: f64) { if v >= 0.0 { self.k_stripe = v; } }
+    pub fn set_half_width(&mut self, v: f64) { if v >= 0.0 { self.half_width = v; } }
+    pub fn set_sharpness(&mut self, v: f64) { if v > 0.0 { self.sharpness = v; } }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.pattern.width() }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.pattern.height() }
+    #[wasm_bindgen(getter)]
+    pub fn pattern_time(&self) -> f64 { self.pattern.time() }
+    #[wasm_bindgen(getter)]
+    pub fn phase_time(&self) -> f64 { self.phase.time() }
+    #[wasm_bindgen(getter)]
+    pub fn order_parameter(&self) -> f64 { self.phase.order_parameter() }
+
+    /// Local phase correlation, 4-neighbour.
+    pub fn local_correlation(&self) -> f64 {
+        let w = self.phase.width();
+        let h = self.phase.height();
+        let theta = self.phase.theta();
+        let mut acc = 0.0;
+        let mut count = 0usize;
+        for j in 0..h {
+            let jp = if j == h - 1 { 0 } else { j + 1 };
+            for i in 0..w {
+                let ip = if i == w - 1 { 0 } else { i + 1 };
+                let t0 = theta[j * w + i];
+                acc += (theta[j * w + ip] - t0).cos();
+                acc += (theta[jp * w + i] - t0).cos();
+                count += 2;
+            }
+        }
+        if count == 0 { 0.0 } else { acc / (count as f64) }
+    }
+
+    /// Order parameter restricted to stripe cells (|u| above half_width).
+    pub fn order_parameter_on_stripes(&self) -> f64 {
+        let u = self.pattern.u();
+        let theta = self.phase.theta();
+        let (mut cs, mut sn, mut n) = (0.0_f64, 0.0_f64, 0_usize);
+        for (ui, ti) in u.iter().zip(theta.iter()) {
+            if ui.abs() > self.half_width { cs += ti.cos(); sn += ti.sin(); n += 1; }
+        }
+        if n == 0 { 0.0 } else { (cs * cs + sn * sn).sqrt() / n as f64 }
+    }
+
+    pub fn order_parameter_in_gaps(&self) -> f64 {
+        let u = self.pattern.u();
+        let theta = self.phase.theta();
+        let (mut cs, mut sn, mut n) = (0.0_f64, 0.0_f64, 0_usize);
+        for (ui, ti) in u.iter().zip(theta.iter()) {
+            if ui.abs() < self.half_width { cs += ti.cos(); sn += ti.sin(); n += 1; }
+        }
+        if n == 0 { 0.0 } else { (cs * cs + sn * sn).sqrt() / n as f64 }
+    }
+
+    /// Fraction of cells classified as "stripe" (|u| above half_width).
+    pub fn stripe_fraction(&self) -> f64 {
+        let u = self.pattern.u();
+        let hw = self.half_width;
+        u.iter().filter(|x| x.abs() > hw).count() as f64 / u.len() as f64
+    }
+
+    pub fn pattern_field(&self) -> Vec<f64> { self.pattern.u().to_vec() }
+    pub fn k_coupling_field(&self) -> Vec<f64> { self.k_field.clone() }
+    pub fn theta_field(&self) -> Vec<f64> { self.phase.theta().to_vec() }
+}
+
+
 

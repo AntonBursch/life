@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R15 — Stripes route sync · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .triple {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .triple figure { margin: 0; }
+            .triple canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .triple figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .triple { grid-template-columns: 1fr; }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r14-three-layer-stack/">← R14</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R15 — Stripes route sync</h1>
+        <p class="muted">
+            Sixth composition. New substrate pair, no new operator.
+            Swift-Hohenberg (R6) self-organises a striped pattern
+            <em>u</em>; <code>bulk_gate</code> (third reuse, after
+            R12 and R14) reads <em>|u|</em> and writes a per-cell
+            Kuramoto coupling map <em>K</em> that is high inside
+            stripes and low between them; Kuramoto (R9) phase-locks
+            along each stripe and drifts in the gaps. The phase
+            pattern inherits the geometry of the substrate that
+            grew it.
+        </p>
+
+        <div class="triple">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>1 · Pattern u (R6, Swift-Hohenberg)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="kCanvas"></canvas>
+                <figcaption>2 · Coupling K = bulk_gate(|u|)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="phaseCanvas"></canvas>
+                <figcaption>3 · Phase θ (R9, Kuramoto)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseedPattern">↻ Reseed pattern</button>
+            <button id="reseedPhases">↻ Reseed phases</button>
+        </div>
+
+        <div class="controls">
+            <label for="kstripe">stripe coupling K<sub>stripe</sub></label>
+            <input id="kstripe" type="range" min="0" max="12" value="8" step="0.1" />
+            <span id="kstripeV" class="value">8.0</span>
+
+            <label for="kgap">gap coupling K<sub>gap</sub></label>
+            <input id="kgap" type="range" min="0" max="2" value="0.05" step="0.05" />
+            <span id="kgapV" class="value">0.05</span>
+
+            <label for="hwidth">stripe threshold |u|<sub>0</sub></label>
+            <input id="hwidth" type="range" min="0.1" max="0.9" value="0.3" step="0.01" />
+            <span id="hwidthV" class="value">0.30</span>
+
+            <label for="rparam">SH growth r</label>
+            <input id="rparam" type="range" min="0" max="0.5" value="0.3" step="0.01" />
+            <span id="rparamV" class="value">0.30</span>
+
+            <label for="sigma">freq spread σ</label>
+            <input id="sigma" type="range" min="0" max="0.4" value="0.1" step="0.01" />
+            <span id="sigmaV" class="value">0.10</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="12" value="3" step="1" />
+            <span id="speedV" class="value">3</span>
+        </div>
+
+        <p class="muted">
+            Read left to right. Panel 1 grows stripes (or spots,
+            depending on <em>r</em>). Panel 2 is the same image
+            run through a soft band-pass on <em>|u|</em>:
+            bright = stripe interior = K<sub>stripe</sub>, dark =
+            zero-crossing = K<sub>gap</sub>. Panel 3 reads panel 2
+            as its coupling map and locks where the stripes are.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (pattern)</span> <span class="v" id="rTu">0</span></div>
+            <div><span class="k">stripe %</span> <span class="v" id="rStripe">0%</span></div>
+            <div><span class="k">r on stripes</span> <span class="v" id="rRs">0.000</span></div>
+            <div><span class="k">r in gaps</span> <span class="v" id="rRg">0.000</span></div>
+            <div><span class="k">r global</span> <span class="v" id="rR">0.000</span></div>
+            <div><span class="k">local corr</span> <span class="v" id="rLoc">+0.000</span></div>
+            <div><span class="k">regime</span> <span class="v" id="rRegime">cold</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            The operator alphabet is reusable across distinct
+            substrates. R12 used <code>bulk_gate</code> with a
+            Cahn-Hilliard territory (smooth ±1 regions). R14 used
+            <code>bulk_gate</code> again in the same role inside a
+            three-layer stack. R15 uses
+            <code>bulk_gate</code> with a Swift-Hohenberg pattern,
+            whose geometry is striped/spotted instead of bulk
+            phase-separated. Same operator, very different spatial
+            structure of K. The Kuramoto layer underneath doesn't
+            care which substrate authored its coupling map; it
+            just locks where K is high.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> Wait ~20s. Panel 1 forms
+                stripes/spots. Panel 2 traces the stripe interiors.
+                Panel 3 develops bright bands of phase along the
+                stripes; the gaps stay scrambled.
+            </li>
+            <li>
+                <strong>K<sub>stripe</sub> → 0.</strong> Coupling
+                collapses everywhere. Panel 3 returns to rainbow
+                noise. The substrate still draws stripes; nothing
+                downstream reads them.
+            </li>
+            <li>
+                <strong>K<sub>gap</sub> → 1.</strong> Gaps couple
+                too. The stripe-vs-gap distinction in panel 3
+                fades. r<sub>stripes</sub> and r<sub>gaps</sub>
+                converge.
+            </li>
+            <li>
+                <strong>|u|<sub>0</sub> very small.</strong>
+                Almost every cell counts as "stripe." K is uniformly
+                high; phase locks globally, but the geometric
+                signature is lost.
+            </li>
+            <li>
+                <strong>|u|<sub>0</sub> very large.</strong>
+                Almost no cell counts as stripe. K is uniformly
+                low; phase drifts everywhere.
+            </li>
+            <li>
+                <strong>r → 0.</strong> Pattern formation dies.
+                u flattens, stripes disappear, K goes uniform.
+                Phase has nothing to follow.
+            </li>
+            <li>
+                <strong>σ → 0.</strong> Oscillators are identical;
+                they lock trivially. The stripe vs gap distinction
+                in panel 3 weakens because gaps lock too (no
+                detuning to fight).
+            </li>
+            <li>
+                <strong>σ large.</strong> Strong detuning. Only the
+                stripe interiors, where K is large enough to beat
+                σ, can lock. The geometric signature in panel 3
+                sharpens.
+            </li>
+        </ol>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>Phase inherits geometry.</strong> The
+                bright bands in panel 3 trace the stripes in
+                panel 1 cell-by-cell. The substrate's shape is
+                visible in the downstream layer that knows nothing
+                about Swift-Hohenberg.
+            </li>
+            <li>
+                <strong>r<sub>stripes</sub> ≫ r<sub>gaps</sub>.</strong>
+                Within stripe cells, phases align. Within gap
+                cells, they don't. The global r averages these and
+                hides the structure; the split measurement reveals
+                it.
+            </li>
+            <li>
+                <strong>local correlation is high even when global
+                r is low.</strong> Neighbouring cells inside the
+                same stripe lock together, but different stripes
+                may settle into different mean phases. Locking is
+                local, not necessarily global — exactly the
+                signature you'd expect when coupling is itself
+                spatial.
+            </li>
+            <li>
+                <strong>Reuse without rewrite.</strong> No new
+                Rust. <code>bulk_gate</code> is the same function
+                used in R12 and R14. The composition is just a
+                different upstream substrate.
+            </li>
+        </ul>
+
+        <h2>why this rung matters</h2>
+        <p>
+            R10–R14 built up substrate-by-substrate. R15 shows the
+            other direction: hold an operator fixed and swap the
+            substrate. <code>bulk_gate</code> has now seen
+            ±1-blob territories (R12), a stack with the same
+            territory geometry (R14), and now striped patterns
+            (R15) — three distinct spatial regimes, one operator.
+            That is the kind of evidence you want before claiming
+            the alphabet is real.
+        </p>
+
+        <p class="muted">
+            Math + code: <code>flow::SwiftHohenberg2D</code>,
+            <code>flow::Kuramoto2D::step_with_coupling_field</code>,
+            wired with <code>flow::bulk_gate</code>. No new core.
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>
