@@ -15,6 +15,7 @@ members = [
     "r11-phase-drives-rxn",
     "r12-territory-sync",
     "r13-spikes-seed-pattern",
+    "r14-three-layer-stack",
     "server",
     "flow-wasm",
 ]

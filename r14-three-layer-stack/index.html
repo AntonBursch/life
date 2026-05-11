@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R14 — Three-layer stack · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .quad {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .quad figure { margin: 0; }
+            .quad canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .quad figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .quad { grid-template-columns: repeat(2, 1fr); }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r13-spikes-seed-pattern/">← R13</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R14 — Three-layer stack</h1>
+        <p class="muted">
+            Fifth composition. No new operators, no new substrates.
+            Just <code>bulk_gate</code> (from R12) and
+            <code>phase_to_scalar_field</code> (from R11) stacked
+            into one pipeline: Cahn-Hilliard territory routes
+            Kuramoto coupling, Kuramoto phase paces Gray-Scott feed,
+            chemistry blooms. Three substrates, two operators, one
+            phenomenon. The point of this rung is that the alphabet
+            composes end-to-end.
+        </p>
+
+        <div class="quad">
+            <figure>
+                <canvas id="phiCanvas"></canvas>
+                <figcaption>1 · Territory φ (R8)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="phaseCanvas"></canvas>
+                <figcaption>2 · Phase θ (R9)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="feedCanvas"></canvas>
+                <figcaption>3 · Feed F = lo + (hi−lo)·½(1+cos θ)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="vCanvas"></canvas>
+                <figcaption>4 · Chemistry V (R4)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseedPhases">↻ Reseed phases</button>
+            <button id="reterritory">↻ New territory</button>
+            <button id="reseedChem">↻ Reseed chemistry</button>
+        </div>
+
+        <div class="controls">
+            <label for="kbulk">bulk coupling K<sub>bulk</sub></label>
+            <input id="kbulk" type="range" min="0" max="12" value="8" step="0.1" />
+            <span id="kbulkV" class="value">8.0</span>
+
+            <label for="kwall">wall coupling K<sub>wall</sub></label>
+            <input id="kwall" type="range" min="0" max="2" value="0.05" step="0.05" />
+            <span id="kwallV" class="value">0.05</span>
+
+            <label for="flo">feed F<sub>lo</sub></label>
+            <input id="flo" type="range" min="0" max="0.06" value="0.030" step="0.001" />
+            <span id="floV" class="value">0.030</span>
+
+            <label for="fhi">feed F<sub>hi</sub></label>
+            <input id="fhi" type="range" min="0" max="0.08" value="0.062" step="0.001" />
+            <span id="fhiV" class="value">0.062</span>
+
+            <label for="kill">kill k</label>
+            <input id="kill" type="range" min="0.04" max="0.075" value="0.062" step="0.001" />
+            <span id="killV" class="value">0.062</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="12" value="3" step="1" />
+            <span id="speedV" class="value">3</span>
+        </div>
+
+        <p class="muted">
+            Read the panels left to right as a signal flow. Panel 1
+            phase-separates into red/blue blobs. Panel 2 grows two
+            (or more) coherent regions whose boundaries match panel
+            1's walls. Panel 3 oscillates inside each region — the
+            two halves often pulse out of phase. Panel 4 fills in,
+            blooming faster in whichever region is currently
+            high-feed. Walls of territory become walls of bloom
+            timing.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (territory)</span> <span class="v" id="rTt">0</span></div>
+            <div><span class="k">t (chemistry)</span> <span class="v" id="rTc">0</span></div>
+            <div><span class="k">r in φ&gt;0 bulk</span> <span class="v" id="rRpos">0.000</span></div>
+            <div><span class="k">r in φ&lt;0 bulk</span> <span class="v" id="rRneg">0.000</span></div>
+            <div><span class="k">mean V</span> <span class="v" id="rMeanV">0.000</span></div>
+            <div><span class="k">V coverage</span> <span class="v" id="rCov">0%</span></div>
+            <div><span class="k">bloom split (V<sub>+</sub>−V<sub>−</sub>)</span> <span class="v" id="rSplit">+0.000</span></div>
+            <div><span class="k">regime</span> <span class="v" id="rRegime">cold</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            R10–R13 each picked one operator and one pair of
+            substrates. R14 says: the alphabet itself composes.
+            Plug bulk_gate's output (a coupling map) into Kuramoto;
+            plug Kuramoto's output (a phase map) into
+            phase_to_scalar_field; plug that output (a feed map)
+            into Gray-Scott. Three substrates ride on each other's
+            backs through five lines of glue. The territory at the
+            top has no idea Gray-Scott exists; the chemistry at the
+            bottom has no idea Cahn-Hilliard exists; yet the bloom
+            map at the bottom shows the territory's shape, filtered
+            through phase, written in chemistry.
+        </p>
+
+        <p>
+            That is the whole point of having an alphabet. The
+            substrates are local kernels. The operators are local
+            arrows. Compositions are not bespoke code; they are
+            programs in this little language.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> Wait ~30s. Watch panels
+                1–4 settle. Panel 4 should show distinct bloom
+                rates in the two halves of the territory.
+            </li>
+            <li>
+                <strong>K<sub>bulk</sub> → 0.</strong> No coupling.
+                Phase canvas (panel 2) becomes rainbow noise; feed
+                map (panel 3) follows; chemistry (panel 4) blooms
+                uniformly. The chain is broken at link 1: no
+                segmentation reaches the bottom.
+            </li>
+            <li>
+                <strong>F<sub>hi</sub> = F<sub>lo</sub> = 0.045.</strong>
+                Phase still locks per-territory, but the
+                phase-to-feed link is dead. Chemistry blooms
+                uniformly. Chain broken at link 2: territory and
+                phase are still alive but unread.
+            </li>
+            <li>
+                <strong>K<sub>wall</sub> → 1.</strong> Walls also
+                couple. The two clusters merge. Both halves of the
+                territory pulse together. bloom_split → 0. The
+                segmentation has been welded shut.
+            </li>
+            <li>
+                <strong>kill → 0.075.</strong> Chemistry decays
+                too fast to track the slow phase modulation. Bloom
+                map stays empty regardless of upstream signal.
+                Three layers, but the bottom layer's window has
+                slammed shut.
+            </li>
+            <li>
+                <strong>New territory.</strong> Same operators,
+                same phases, fresh CH initial condition. Watch the
+                whole bottom panel re-organise around the new
+                territorial geometry.
+            </li>
+        </ol>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>Signal flow visible across panels.</strong>
+                Whatever shape is in panel 1, panel 2 stamps onto
+                its phase boundaries, panel 3 modulates the feed
+                inside each, panel 4 records the integral.
+                Top-down causation is literally drawn on screen.
+            </li>
+            <li>
+                <strong>Bloom split rings.</strong> bloom_split
+                rises and falls as the two clusters drift in and
+                out of phase with each other. When they happen to
+                be aligned, the bloom rate is similar; when opposed,
+                one half blooms and the other rests.
+            </li>
+            <li>
+                <strong>Coarsening reaches the bottom.</strong>
+                When two CH bubbles merge in panel 1, the matching
+                clusters in panel 2 negotiate to a single colour,
+                and the matching regions in panel 4 start blooming
+                in sync. The coarsening of the slowest layer
+                eventually rearranges the fastest layer.
+            </li>
+            <li>
+                <strong>Composition cost.</strong> The Rust glue
+                between substrates is a handful of lines. The
+                interesting math lives in each substrate and each
+                operator, exactly once.
+            </li>
+        </ul>
+
+        <h2>why this rung matters</h2>
+        <p>
+            With R14, the alphabet has its first real sentence:
+            three substrates strung together by two operators,
+            producing a phenomenon (territorially-segmented
+            chemical bloom timing) that depends on every layer.
+            This is the smallest possible demonstration that the
+            ladder isn't a list of four-line tricks; it's an
+            authoring surface. R15+ can either reuse the same
+            substrates with different chains, or extend the
+            substrate set, or extend the operator set — the rest
+            is combinatorics.
+        </p>
+
+        <p class="muted">
+            Math + code: <code>flow::CahnHilliard2D</code>,
+            <code>flow::Kuramoto2D::step_with_coupling_field</code>,
+            <code>flow::GrayScott2D::step_with_feed_field</code>,
+            wired with <code>flow::bulk_gate</code> and
+            <code>flow::phase_to_scalar_field</code>. No new core.
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

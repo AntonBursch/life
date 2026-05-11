@@ -1347,3 +1347,194 @@ impl WasmCoupledR13 {
     pub fn chem_u_field(&self) -> Vec<f64> { self.chem.u().to_vec() }
 }
 
+// =====================================================================
+// R14: three-layer stack. CH (R8) -> Kuramoto (R9) -> Gray-Scott (R4).
+//
+//   territory.phi  --bulk_gate-->            k_field (per-cell K)
+//   k_field        --kuramoto.step-->        theta (phase per cell)
+//   theta          --phase_to_scalar_field-> feed_field (per-cell F)
+//   feed_field     --gs.step_with_feed-->    chemistry V
+//
+// No new operators, no new substrates. The point of this rung is
+// that the alphabet composes end-to-end: stack three substrates and
+// two operators, get one phenomenon that depends on all three. The
+// territory segments which Kuramoto cluster locks; that cluster's
+// collective phase paces a region of chemistry feed; so the walls
+// of the territory become walls of bloom timing in the chemistry.
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR14 {
+    territory: CahnHilliard2D,
+    phase: Kuramoto2D,
+    chem: GrayScott2D,
+    k_field: Vec<f64>,
+    feed_field: Vec<f64>,
+    k_wall: f64,
+    k_bulk: f64,
+    half_width: f64,
+    sharpness: f64,
+    f_lo: f64,
+    f_hi: f64,
+    phase_substeps: u32,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR14 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        // Cahn-Hilliard
+        mobility: f64,
+        kappa: f64,
+        ch_dx: f64,
+        ch_dt: f64,
+        // Kuramoto
+        ph_dt: f64,
+        // Gray-Scott
+        gs_du: f64,
+        gs_dv: f64,
+        gs_kill: f64,
+        gs_dx: f64,
+        gs_dt: f64,
+        // bulk_gate (CH -> K)
+        k_wall: f64,
+        k_bulk: f64,
+        half_width: f64,
+        sharpness: f64,
+        // phase_to_scalar_field (theta -> feed)
+        f_lo: f64,
+        f_hi: f64,
+        // Number of Kuramoto substeps per Gray-Scott step
+        phase_substeps: u32,
+    ) -> Result<WasmCoupledR14, JsError> {
+        let territory = CahnHilliard2D::new(width, height, mobility, kappa, ch_dx, ch_dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let phase = Kuramoto2D::new(width, height, 0.0, ph_dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let f_seed = 0.5 * (f_lo + f_hi);
+        let chem = GrayScott2D::new(width, height, gs_du, gs_dv, f_seed, gs_kill, gs_dx, gs_dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let n = width * height;
+        Ok(Self {
+            territory, phase, chem,
+            k_field: vec![0.0; n],
+            feed_field: vec![f_seed; n],
+            k_wall, k_bulk, half_width, sharpness,
+            f_lo, f_hi,
+            phase_substeps: phase_substeps.max(1),
+        })
+    }
+
+    pub fn step(&mut self) {
+        // Slow layer: territory.
+        self.territory.step();
+        let _ = bulk_gate(
+            self.territory.c(),
+            self.k_wall, self.k_bulk, self.half_width, self.sharpness,
+            &mut self.k_field,
+        );
+        // Mid layer: phase, several substeps per gs step.
+        for _ in 0..self.phase_substeps {
+            let _ = self.phase.step_with_coupling_field(&self.k_field);
+        }
+        // Operator 2: theta -> feed.
+        let _ = phase_to_scalar_field(self.phase.theta(), self.f_lo, self.f_hi, &mut self.feed_field);
+        // Fast layer: chemistry.
+        let _ = self.chem.step_with_feed_field(&self.feed_field);
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_noise(&mut self, amplitude: f64, mean: f64, seed: u32) {
+        self.territory.seed_noise(amplitude, mean, seed as u64);
+    }
+    pub fn reset_territory(&mut self) { self.territory.reset(); }
+    pub fn set_natural_frequencies(&mut self, sigma: f64, seed: u32) {
+        self.phase.set_natural_frequencies(sigma, seed as u64);
+    }
+    pub fn randomise_phases(&mut self, seed: u32) {
+        self.phase.randomise_phases(seed as u64);
+    }
+    pub fn seed_blob(&mut self, cx: usize, cy: usize, r: usize) {
+        self.chem.seed_blob(cx, cy, r);
+    }
+    pub fn reset_chem(&mut self) { self.chem.reset(); }
+
+    pub fn set_k_wall(&mut self, v: f64) { if v >= 0.0 { self.k_wall = v; } }
+    pub fn set_k_bulk(&mut self, v: f64) { if v >= 0.0 { self.k_bulk = v; } }
+    pub fn set_half_width(&mut self, v: f64) { if v >= 0.0 { self.half_width = v; } }
+    pub fn set_sharpness(&mut self, v: f64) { if v > 0.0 { self.sharpness = v; } }
+    pub fn set_f_lo(&mut self, v: f64) { if v >= 0.0 { self.f_lo = v; } }
+    pub fn set_f_hi(&mut self, v: f64) { if v >= 0.0 { self.f_hi = v; } }
+    pub fn set_kill(&mut self, v: f64) { self.chem.set_kill(v); }
+    pub fn set_phase_substeps(&mut self, n: u32) { self.phase_substeps = n.max(1); }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.chem.width() }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.chem.height() }
+    #[wasm_bindgen(getter)]
+    pub fn territory_time(&self) -> f64 { self.territory.time() }
+    #[wasm_bindgen(getter)]
+    pub fn chem_time(&self) -> f64 { self.chem.time() }
+    #[wasm_bindgen(getter)]
+    pub fn order_parameter(&self) -> f64 { self.phase.order_parameter() }
+
+    pub fn order_parameter_pos(&self) -> f64 {
+        let phi = self.territory.c();
+        let theta = self.phase.theta();
+        let (mut cs, mut sn, mut n) = (0.0_f64, 0.0_f64, 0_usize);
+        for (p, t) in phi.iter().zip(theta.iter()) {
+            if *p > 0.0 { cs += t.cos(); sn += t.sin(); n += 1; }
+        }
+        if n == 0 { 0.0 } else { (cs * cs + sn * sn).sqrt() / n as f64 }
+    }
+
+    pub fn order_parameter_neg(&self) -> f64 {
+        let phi = self.territory.c();
+        let theta = self.phase.theta();
+        let (mut cs, mut sn, mut n) = (0.0_f64, 0.0_f64, 0_usize);
+        for (p, t) in phi.iter().zip(theta.iter()) {
+            if *p < 0.0 { cs += t.cos(); sn += t.sin(); n += 1; }
+        }
+        if n == 0 { 0.0 } else { (cs * cs + sn * sn).sqrt() / n as f64 }
+    }
+
+    pub fn mean_v(&self) -> f64 {
+        let v = self.chem.v();
+        v.iter().sum::<f64>() / (v.len() as f64)
+    }
+
+    pub fn v_coverage(&self) -> f64 {
+        let v = self.chem.v();
+        v.iter().filter(|x| **x > 0.2).count() as f64 / (v.len() as f64)
+    }
+
+    /// Mean V over phi>0 minus mean V over phi<0. Nonzero means the
+    /// two territorial halves are blooming at different mean levels,
+    /// which only happens if phase-locking within each bulk has
+    /// produced a different mean phase, which only happens because the
+    /// territory routed coupling that way. Three-layer fingerprint.
+    pub fn bloom_split(&self) -> f64 {
+        let phi = self.territory.c();
+        let v = self.chem.v();
+        let (mut sp, mut np_, mut sn, mut nn_) = (0.0_f64, 0_usize, 0.0_f64, 0_usize);
+        for (p, vi) in phi.iter().zip(v.iter()) {
+            if *p > 0.0 { sp += vi; np_ += 1; }
+            else if *p < 0.0 { sn += vi; nn_ += 1; }
+        }
+        if np_ == 0 || nn_ == 0 { return 0.0; }
+        (sp / np_ as f64) - (sn / nn_ as f64)
+    }
+
+    pub fn phi_field(&self) -> Vec<f64> { self.territory.c().to_vec() }
+    pub fn theta_field(&self) -> Vec<f64> { self.phase.theta().to_vec() }
+    pub fn k_coupling_field(&self) -> Vec<f64> { self.k_field.clone() }
+    pub fn feed_field(&self) -> Vec<f64> { self.feed_field.clone() }
+    pub fn chem_v_field(&self) -> Vec<f64> { self.chem.v().to_vec() }
+}
+
+
