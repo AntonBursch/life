@@ -4,7 +4,7 @@
 //! JS/Rust interop and exposes the diffusion field in a form a Canvas
 //! renderer can consume cheaply.
 
-use flow::{excitable_gate, phase_to_scalar_field, bulk_gate, gradient_magnitude, gradient_field, advect_by, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
+use flow::{excitable_gate, phase_to_scalar_field, bulk_gate, gradient_magnitude, gradient_field, advect_by, threshold_event, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -2021,4 +2021,165 @@ impl WasmCoupledR17 {
             .collect()
     }
     pub fn dye_field(&self) -> Vec<f64> { self.dye.clone() }
+}
+
+// =====================================================================
+// R18: waves leave marks. Barkley (R7) propagates spiral / target
+// waves; the new operator threshold_event watches u against a
+// threshold and emits a 1 wherever u rises through it on this
+// step. A per-cell counter accumulates those events into a firing-
+// rate map; a last-fire field latches the most recent event time
+// for a decaying-trace visualisation.
+//
+// First use of threshold_event -- operator alphabet's first
+// "discretise" primitive. Continuous field in, symbolic events
+// out.
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR18 {
+    tissue: Barkley2D,
+    prev_u: Vec<f64>,
+    events: Vec<u8>,
+    counts: Vec<u32>,
+    last_fire: Vec<f64>,
+    threshold: f64,
+    events_this_step: u32,
+    cumulative_events: u64,
+    width: usize,
+    height: usize,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR18 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        diffusion: f64,
+        a: f64,
+        b: f64,
+        eps: f64,
+        dx: f64,
+        dt: f64,
+        threshold: f64,
+    ) -> Result<WasmCoupledR18, JsError> {
+        let tissue = Barkley2D::new(width, height, diffusion, a, b, eps, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let n = width * height;
+        Ok(Self {
+            prev_u: tissue.u().to_vec(),
+            tissue,
+            events: vec![0; n],
+            counts: vec![0; n],
+            last_fire: vec![-1.0; n],
+            threshold,
+            events_this_step: 0,
+            cumulative_events: 0,
+            width, height,
+        })
+    }
+
+    pub fn step(&mut self) {
+        self.tissue.step();
+        let _ = threshold_event(
+            &self.prev_u,
+            self.tissue.u(),
+            self.threshold,
+            &mut self.events,
+        );
+        self.events_this_step = 0;
+        let t = self.tissue.time();
+        for k in 0..self.events.len() {
+            if self.events[k] == 1 {
+                self.counts[k] = self.counts[k].saturating_add(1);
+                self.last_fire[k] = t;
+                self.events_this_step += 1;
+            }
+        }
+        self.cumulative_events += self.events_this_step as u64;
+        self.prev_u.copy_from_slice(self.tissue.u());
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_spiral(&mut self) {
+        self.tissue.seed_spiral();
+        self.prev_u.copy_from_slice(self.tissue.u());
+        self.reset_marks();
+    }
+
+    pub fn kick(&mut self, cx: usize, cy: usize, radius: usize, amplitude: f64) {
+        self.tissue.kick(cx, cy, radius, amplitude);
+        self.prev_u.copy_from_slice(self.tissue.u());
+    }
+
+    pub fn reset_tissue(&mut self) {
+        self.tissue.reset();
+        self.prev_u.copy_from_slice(self.tissue.u());
+        self.reset_marks();
+    }
+
+    pub fn reset_marks(&mut self) {
+        for c in &mut self.counts { *c = 0; }
+        for t in &mut self.last_fire { *t = -1.0; }
+        self.events_this_step = 0;
+        self.cumulative_events = 0;
+    }
+
+    pub fn set_threshold(&mut self, v: f64) { self.threshold = v; }
+    pub fn set_a(&mut self, a: f64) { self.tissue.set_a(a); }
+    pub fn set_b(&mut self, b: f64) { self.tissue.set_b(b); }
+    pub fn set_eps(&mut self, e: f64) { self.tissue.set_eps(e); }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.width }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.height }
+    #[wasm_bindgen(getter)]
+    pub fn tissue_time(&self) -> f64 { self.tissue.time() }
+    #[wasm_bindgen(getter)]
+    pub fn events_last_step(&self) -> u32 { self.events_this_step }
+    #[wasm_bindgen(getter)]
+    pub fn cumulative_event_count(&self) -> f64 { self.cumulative_events as f64 }
+
+    /// Fraction of cells that have fired at least once.
+    pub fn coverage(&self) -> f64 {
+        let hit = self.counts.iter().filter(|c| **c > 0).count();
+        hit as f64 / self.counts.len() as f64
+    }
+
+    /// Maximum per-cell event count.
+    pub fn max_count(&self) -> u32 {
+        *self.counts.iter().max().unwrap_or(&0)
+    }
+
+    /// Mean firing rate per cell (events / time), averaged over
+    /// cells that have fired at least once.
+    pub fn mean_rate(&self) -> f64 {
+        let t = self.tissue.time().max(1e-9);
+        let hit: usize = self.counts.iter().filter(|c| **c > 0).count();
+        if hit == 0 { return 0.0; }
+        let sum: u64 = self.counts.iter().map(|c| *c as u64).sum();
+        sum as f64 / hit as f64 / t
+    }
+
+    pub fn u_field(&self) -> Vec<f64> { self.tissue.u().to_vec() }
+    pub fn v_field(&self) -> Vec<f64> { self.tissue.v().to_vec() }
+    pub fn events_field(&self) -> Vec<f64> {
+        // 0/1 -> f64 for the shared field renderer.
+        self.events.iter().map(|e| *e as f64).collect()
+    }
+    pub fn counts_field(&self) -> Vec<f64> {
+        self.counts.iter().map(|c| *c as f64).collect()
+    }
+    /// Decaying trace: exp(-(t - last_fire)/tau) per cell, in [0,1].
+    pub fn trace_field(&self, tau: f64) -> Vec<f64> {
+        let t = self.tissue.time();
+        let tau = if tau > 0.0 { tau } else { 1.0 };
+        self.last_fire.iter().map(|lf| {
+            if *lf < 0.0 { 0.0 } else { (-((t - lf) / tau)).exp() }
+        }).collect()
+    }
 }

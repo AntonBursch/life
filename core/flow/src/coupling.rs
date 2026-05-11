@@ -306,6 +306,31 @@ pub fn advect_by(
     Ok(())
 }
 
+/// Detect rising-edge threshold crossings: write `1` into `out[k]`
+/// iff `prev[k] < threshold` and `curr[k] >= threshold`, otherwise
+/// `0`. This is a *discretiser*: it turns a continuous field
+/// trajectory into a per-cell event mask.
+///
+/// Operator alphabet category: "discretise". This is the first
+/// operator whose output is symbolic (events) rather than
+/// continuous (a field). Downstream you can sum events into a
+/// counter, latch the time of the most recent event, or feed
+/// them into a discrete process.
+pub fn threshold_event(
+    prev: &[f64],
+    curr: &[f64],
+    threshold: f64,
+    out: &mut [u8],
+) -> Result<(), CouplingError> {
+    if prev.len() != curr.len() || prev.len() != out.len() {
+        return Err(CouplingError::SizeMismatch);
+    }
+    for k in 0..prev.len() {
+        out[k] = if prev[k] < threshold && curr[k] >= threshold { 1 } else { 0 };
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -610,5 +635,31 @@ mod tests {
             advect_by(&f, &v, &v, 3, 3, 1.0, -0.1, &mut out).unwrap_err(),
             CouplingError::BadParam { name: "dt", .. }
         ));
+    }
+
+    #[test]
+    fn threshold_event_detects_rising_edges_only() {
+        let prev = vec![0.0, 0.5, 0.6, 1.0, 0.3];
+        let curr = vec![0.7, 0.7, 0.5, 0.9, 0.5];
+        // threshold = 0.6
+        //   0.0 -> 0.7 : rising across 0.6     -> 1
+        //   0.5 -> 0.7 : rising across 0.6     -> 1
+        //   0.6 -> 0.5 : prev already >=0.6    -> 0
+        //   1.0 -> 0.9 : staying above         -> 0
+        //   0.3 -> 0.5 : both below            -> 0
+        let mut out = vec![9_u8; 5];
+        threshold_event(&prev, &curr, 0.6, &mut out).unwrap();
+        assert_eq!(out, vec![1, 1, 0, 0, 0]);
+    }
+
+    #[test]
+    fn threshold_event_rejects_size_mismatch() {
+        let prev = vec![0.0; 4];
+        let curr = vec![0.0; 5];
+        let mut out = vec![0; 4];
+        assert_eq!(
+            threshold_event(&prev, &curr, 0.5, &mut out),
+            Err(CouplingError::SizeMismatch)
+        );
     }
 }

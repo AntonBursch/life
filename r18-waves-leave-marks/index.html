@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R18 — Waves leave marks · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .quad {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .quad figure { margin: 0; }
+            .quad canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .quad figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .quad { grid-template-columns: repeat(2, 1fr); }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r17-territory-carries-dye/">← R17</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R18 — Waves leave marks</h1>
+        <p class="muted">
+            Ninth composition. New operator
+            <code>threshold_event</code>: the kit's first
+            <em>discretiser</em> — it turns a continuous field
+            trajectory into a per-cell event mask. A Barkley
+            excitable medium (same as R7) propagates spirals;
+            every step the operator looks at u against a threshold
+            and emits a 1 wherever u just rose through it. A
+            counter accumulates events per cell; a last-fire
+            field decays into a trace. Continuous waves come in;
+            discrete spikes come out.
+        </p>
+
+        <div class="quad">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>1 · u (excitable activator)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="evtCanvas"></canvas>
+                <figcaption>2 · events this step (0/1)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="traceCanvas"></canvas>
+                <figcaption>3 · trace e<sup>−Δt/τ</sup></figcaption>
+            </figure>
+            <figure>
+                <canvas id="cntCanvas"></canvas>
+                <figcaption>4 · cumulative count</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseed">↻ Reseed spiral</button>
+            <button id="resetMarks">↻ Reset marks</button>
+            <button id="kick">⚡ Kick centre</button>
+        </div>
+
+        <div class="controls">
+            <label for="thresh">threshold</label>
+            <input id="thresh" type="range" min="0.1" max="0.9" value="0.5" step="0.01" />
+            <span id="threshV" class="value">0.50</span>
+
+            <label for="tau">trace τ</label>
+            <input id="tau" type="range" min="0.5" max="30" value="6" step="0.5" />
+            <span id="tauV" class="value">6.0</span>
+
+            <label for="eps">excitable ε</label>
+            <input id="eps" type="range" min="0.005" max="0.05" value="0.02" step="0.005" />
+            <span id="epsV" class="value">0.020</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="12" value="4" step="1" />
+            <span id="speedV" class="value">4</span>
+        </div>
+
+        <p class="muted">
+            Read in order. Panel 1: the Barkley activator u — a
+            spiral wavefront sweeps the grid. Panel 2: a binary
+            mask, lit only on the leading edge — every cell flashes
+            once per pass, as u rises through the threshold. Panel
+            3: that same event filtered through an exponential
+            kernel, so you see a fading wake of the wavefront.
+            Panel 4: the per-cell tally, brightening with each
+            visit — a slow record of how often each cell has been
+            excited.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (tissue)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">events this step</span> <span class="v" id="rEvt">0</span></div>
+            <div><span class="k">cumulative</span> <span class="v" id="rCum">0</span></div>
+            <div><span class="k">coverage</span> <span class="v" id="rCov">0%</span></div>
+            <div><span class="k">max count / cell</span> <span class="v" id="rMax">0</span></div>
+            <div><span class="k">mean rate</span> <span class="v" id="rRate">0.000</span></div>
+            <div><span class="k">regime</span> <span class="v" id="rRegime">cold</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            R10–R17 added operators that take fields and give
+            back fields. R18 adds the first operator whose output
+            is <em>not</em> a field. <code>threshold_event</code>
+            takes two snapshots of u — before and after — and
+            produces a per-cell mask of 1's exactly where u
+            crossed a threshold upward. The mask is symbolic: a
+            point event in space-time. Downstream this is what
+            you feed into spike counters, latches, schedulers,
+            anything discrete.
+        </p>
+
+        <p>
+            The composition is small but the category is new.
+            Continuous waves on a 2D substrate get sampled into
+            point events; events accumulate into rates; rates
+            are statistics over a discrete process born from a
+            continuous one. That is the bridge between the
+            reaction-diffusion world and the event-driven world.
+            A neuron isn't a field; it is a field that fired.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> Watch the trace panel
+                (3). The spiral arm has a glowing tail in the
+                event-trace field — that's its history. Compare
+                to panel 1: panel 1 is the wave; panel 3 is the
+                wake.
+            </li>
+            <li>
+                <strong>Threshold = 0.1.</strong> Every cell
+                fires as the wave rises early. Coverage shoots to
+                100% fast; cumulative grows. Lower threshold,
+                more sensitive detector.
+            </li>
+            <li>
+                <strong>Threshold = 0.85.</strong> Only the peaks
+                of u cross. Many cells stop firing. Coverage
+                may plateau well below 1. High threshold,
+                stricter detector.
+            </li>
+            <li>
+                <strong>τ → 0.5.</strong> The trace collapses
+                onto the events themselves — almost instantaneous
+                forgetting. τ → 30: trace persists like a
+                long-exposure photograph of the spiral.
+            </li>
+            <li>
+                <strong>Watch the count map (4) over time.</strong>
+                After several thousand steps, the cumulative
+                count map is a histogram of "how many wavefronts
+                visited me". For a stable spiral it's nearly
+                uniform — every cell sees the wave once per
+                period.
+            </li>
+            <li>
+                <strong>Kick centre.</strong> Inject a fresh
+                excitation. New target waves appear and create a
+                new band of events.
+            </li>
+        </ol>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>Event mask hugs the wavefront.</strong>
+                Panel 2's lit pixels in each frame trace the
+                leading edge of u, where u just crossed θ. The
+                back of the wave (u falling) is dark — only
+                rising crossings fire.
+            </li>
+            <li>
+                <strong>Cumulative grows linearly.</strong> Once
+                the spiral is stable, the cumulative event count
+                grows at a steady rate (cells × passes / period).
+                The "mean rate" readout converges.
+            </li>
+            <li>
+                <strong>Counts equalise.</strong> Given long
+                enough time, the count map (panel 4) goes nearly
+                flat — a single rotating spiral hits every cell
+                the same number of times. The non-uniformity
+                comes from the spiral core, which is special.
+            </li>
+            <li>
+                <strong>R7 vs R18.</strong> R7 showed the
+                continuous activator. R18 listens to it. Same
+                substrate, new role: source of discrete events
+                rather than continuous reagent.
+            </li>
+        </ul>
+
+        <h2>why this rung matters</h2>
+        <p>
+            With <code>threshold_event</code> the operator
+            alphabet finally has a <em>discretise</em> category.
+            Until now everything was field-in / field-out. R18
+            adds the bridge to point processes — to spikes,
+            triggers, alarms, transitions. That is the
+            machinery you need for everything event-driven:
+            neural readouts, control-loop edge detectors,
+            counters, logic.
+        </p>
+
+        <p>
+            Operator alphabet now has 7 ops in 5 categories:
+            read-by-threshold (<code>excitable_gate</code>),
+            read-by-peak (<code>phase_to_scalar_field</code>),
+            read-by-magnitude (<code>bulk_gate</code>),
+            differentiate-scalar (<code>gradient_magnitude</code>),
+            differentiate-vector (<code>gradient_field</code>),
+            transport (<code>advect_by</code>),
+            discretise (<code>threshold_event</code>).
+        </p>
+
+        <p class="muted">
+            Math + code: <code>flow::Barkley2D</code>,
+            <code>flow::threshold_event</code> (new — rising-edge
+            detector on a scalar field).
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

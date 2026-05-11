@@ -19,6 +19,7 @@ members = [
     "r15-stripes-route-sync",
     "r16-walls-route-sync",
     "r17-territory-carries-dye",
+    "r18-waves-leave-marks",
     "server",
     "flow-wasm",
 ]
