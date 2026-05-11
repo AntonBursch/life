@@ -4,7 +4,7 @@
 //! JS/Rust interop and exposes the diffusion field in a form a Canvas
 //! renderer can consume cheaply.
 
-use flow::{AdvectionDiffusion1D, BoundaryCondition, Convection2D, Diffusion1D, GrayScott2D};
+use flow::{AdvectionDiffusion1D, BoundaryCondition, Convection2D, Diffusion1D, GrayScott2D, SwiftHohenberg2D};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -427,5 +427,91 @@ impl WasmConvection2D {
     /// Streamfunction field, for drawing flow contours.
     pub fn psi_field(&self) -> Vec<f64> {
         self.inner.streamfunction().to_vec()
+    }
+}
+
+/// R6 — Swift–Hohenberg. One scalar field, one PDE, one bifurcation knob.
+/// Below `r=0` the field decays to zero. Above, finite-wavelength patterns
+/// emerge: stripes, then labyrinths, then hexagonal cells as `r` grows.
+#[wasm_bindgen]
+pub struct WasmSwiftHohenberg2D {
+    inner: SwiftHohenberg2D,
+}
+
+#[wasm_bindgen]
+impl WasmSwiftHohenberg2D {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        r: f64,
+        dx: f64,
+        dt: f64,
+    ) -> Result<WasmSwiftHohenberg2D, JsError> {
+        let inner = SwiftHohenberg2D::new(width, height, r, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    pub fn step(&mut self) {
+        self.inner.step();
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n {
+            self.inner.step();
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.inner.reset();
+    }
+
+    pub fn seed_noise(&mut self, amplitude: f64) {
+        self.inner.seed_noise(amplitude);
+    }
+
+    pub fn set_r(&mut self, r: f64) {
+        self.inner.set_r(r);
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize {
+        self.inner.width()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize {
+        self.inner.height()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn time(&self) -> f64 {
+        self.inner.time()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn r(&self) -> f64 {
+        self.inner.r()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn mean(&self) -> f64 {
+        self.inner.mean()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn variance(&self) -> f64 {
+        self.inner.variance()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn max_abs(&self) -> f64 {
+        self.inner.max_abs()
+    }
+
+    /// The scalar field `u`, row-major, length = width * height.
+    pub fn u_field(&self) -> Vec<f64> {
+        self.inner.u().to_vec()
     }
 }

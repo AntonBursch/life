@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R6 — Swift–Hohenberg · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r05-convection/">← R5</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R6 — Swift–Hohenberg</h1>
+        <p class="muted">
+            One scalar field. One equation. One knob. Below the knob's
+            zero, the field decays to nothing. Above zero, the field
+            spontaneously chooses a wavelength and tiles the plane
+            with stripes or labyrinths. R4 made patterns from two
+            reacting chemicals; R5 made patterns from a fluid being
+            heated. This rung shows what they were both an instance
+            of, and it does it with the simplest possible field that
+            still has the move.
+        </p>
+
+        <div class="canvas-wrap">
+            <canvas
+                id="field"
+                style="
+                    height: 360px;
+                    aspect-ratio: 1 / 1;
+                "
+            ></canvas>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reset">↺ Re-seed noise</button>
+        </div>
+
+        <div class="btnrow">
+            <button data-preset="below">subcritical (r=-0.2)</button>
+            <button data-preset="onset">near onset (r=0.02)</button>
+            <button data-preset="stripes">stripes (r=0.1)</button>
+            <button data-preset="labyrinth">labyrinth (r=0.3)</button>
+            <button data-preset="strong">strong (r=0.6)</button>
+        </div>
+
+        <div class="controls">
+            <label for="speed">steps / frame</label>
+            <input
+                id="speed"
+                type="range"
+                min="0"
+                max="40"
+                value="10"
+                step="1"
+            />
+            <span id="speedV" class="value">10</span>
+
+            <label for="rval">control r</label>
+            <input
+                id="rval"
+                type="range"
+                min="-0.3"
+                max="0.6"
+                value="0.1"
+                step="0.005"
+            />
+            <span id="rvalV" class="value">0.100</span>
+        </div>
+
+        <p class="muted">
+            r is the bifurcation knob. The interesting threshold sits
+            exactly at r = 0. The natural wavelength of the pattern,
+            when one exists, is 2π in these units — about six cells.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">time</span> <span class="v" id="rT">0</span></div>
+            <div>
+                <span class="k">r</span>
+                <span class="v" id="rR">0.100</span>
+            </div>
+            <div>
+                <span class="k">variance</span>
+                <span class="v" id="rVar">0</span>
+            </div>
+            <div>
+                <span class="k">max |u|</span>
+                <span class="v" id="rMax">0</span>
+            </div>
+            <div>
+                <span class="k">regime</span>
+                <span class="v" id="rRegime">uniform</span>
+            </div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            R4 needed two chemicals, four rate constants, and a
+            specific reaction. R5 needed a fluid, a temperature
+            gradient, gravity, and a streamfunction. They look like
+            very different setups, but right at their thresholds they
+            do the same thing in the same way. Both of them are, near
+            onset, just <em>this</em> equation in disguise: a scalar
+            field with a linear growth rate, a wavelength-selecting
+            term that prefers a particular spatial frequency, and a
+            cubic saturator. That's the whole machine. Whenever a
+            substrate is poised between "uniform" and "patterned"
+            states, you can change variables and arrive here. R6 is
+            not <em>another</em> way to make patterns. It is the
+            <em>doorway</em> R4 and R5 both walked through.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Start subcritical.</strong> Click
+                <code>subcritical (r=-0.2)</code>. The canvas seeds
+                noise and then sweeps itself flat. Variance falls to
+                zero. The system has no reason to organise.
+            </li>
+            <li>
+                <strong>Cross zero.</strong> Click
+                <code>near onset (r=0.02)</code>. Now the noise refuses
+                to die. Faint bands appear and slowly sharpen. The
+                threshold is exactly r = 0. Below it the field is dead;
+                above it the field commits.
+            </li>
+            <li>
+                <strong>Let it choose a wavelength.</strong> Click
+                <code>stripes (r=0.1)</code>. The field locks into
+                stripes spaced about six cells apart. You did not
+                tell it that wavelength — the equation did.
+            </li>
+            <li>
+                <strong>Labyrinths.</strong> Click <code>labyrinth (r=0.3)</code>.
+                The stripes can't sit straight any more; they bend,
+                meet, and tile the plane in a fingerprint pattern.
+                Same wavelength, more freedom in how to use it.
+            </li>
+            <li>
+                <strong>Push it.</strong> Click <code>strong (r=0.6)</code>.
+                The pattern saturates near ±1 and the cubic does its
+                job: u never blows up. The pattern is loud but stable.
+            </li>
+            <li>
+                <strong>Slide r slowly across zero.</strong> Watch the
+                variance. It does not creep — it lifts off a hard
+                floor exactly at zero, like a square root. That lift-off
+                is the bifurcation. Every "pattern-forming" system in
+                physics has the same shape near its threshold.
+            </li>
+        </ol>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>The threshold is sharp.</strong> Below r = 0
+                there is no pattern; above r = 0 there is. The
+                transition is qualitative, not gradual.
+            </li>
+            <li>
+                <strong>The wavelength is intrinsic.</strong> The
+                stripes are about six cells across whether you seed
+                from random noise, from a single bright dot, or from
+                anything else. The equation prefers one spatial
+                frequency.
+            </li>
+            <li>
+                <strong>The cubic keeps the world finite.</strong>
+                Linear growth alone would blow up. The −u³ term puts
+                a ceiling on how loud the pattern can get. Every
+                pattern-forming substrate in nature does this in some
+                form, because anything that didn't would have already
+                destroyed itself.
+            </li>
+        </ul>
+
+        <h2>why this rung matters</h2>
+        <p>
+            R4 and R5 each looked like a self-contained story: a
+            chemistry story and a fluids story. R6 says they are the
+            same story. Near the onset of pattern formation, you can
+            rewrite both of them — and many others, including the
+            convective patterns of clouds, the buckling of thin
+            shells, vegetation stripes on hillsides, retinal
+            development — as this one PDE with a tuned r. The
+            mechanism is universal; the substrate is what changes.
+        </p>
+        <p>
+            That's the key idea for everything above this rung. The
+            living world is not a stack of unrelated tricks. It's a
+            stack of the same handful of moves, performed in
+            different substrates. R6 is the cleanest place to see one
+            of those moves stripped to its bones.
+        </p>
+
+        <p class="muted">
+            Math + code in
+            <a href="../notes/01-flow.md">notes/01-flow.md</a>.
+            Next rung: a pattern that has not only shape but
+            <em>direction</em> — excitable media, where state moves
+            through space like a thought through tissue.
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

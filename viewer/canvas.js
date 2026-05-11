@@ -152,3 +152,56 @@ export function drawField2DTemperature(ctx, w, h, field, gw, gh) {
     ctx.clearRect(0, 0, w, h);
     ctx.drawImage(ctx._tbacking, 0, 0, w, h);
 }
+
+/**
+ * Draw a 2D scalar field with a symmetric diverging ramp:
+ * negative values map to deep blue, zero to near-white, positive to deep red.
+ * `vmax` sets the saturation magnitude; values outside [-vmax, +vmax] are clamped.
+ */
+export function drawField2DDiverging(ctx, w, h, field, gw, gh, vmax) {
+    if (!field.length) {
+        ctx.clearRect(0, 0, w, h);
+        return;
+    }
+    if (!ctx._dbacking || ctx._dbacking.width !== gw || ctx._dbacking.height !== gh) {
+        const off = document.createElement("canvas");
+        off.width = gw;
+        off.height = gh;
+        ctx._dbacking = off;
+        ctx._dbackingCtx = off.getContext("2d");
+        ctx._dbackingImg = ctx._dbackingCtx.createImageData(gw, gh);
+    }
+    const img = ctx._dbackingImg;
+    const data = img.data;
+    const m = vmax > 1e-12 ? vmax : 1e-12;
+    for (let j = 0; j < gh; j++) {
+        const row = j * gw;
+        for (let i = 0; i < gw; i++) {
+            let v = field[row + i] / m;       // -1..+1
+            if (v < -1) v = -1;
+            else if (v > 1) v = 1;
+            const t = 0.5 * (v + 1);          // 0..1
+            let r, g, b;
+            if (t < 0.5) {
+                const s = t * 2.0;
+                r = Math.round(35 + s * 220);
+                g = Math.round(60 + s * 195);
+                b = Math.round(170 + s * 85);
+            } else {
+                const s = (t - 0.5) * 2.0;
+                r = 255;
+                g = Math.round(255 - s * 200);
+                b = Math.round(255 - s * 240);
+            }
+            const o = (row + i) * 4;
+            data[o] = r;
+            data[o + 1] = g;
+            data[o + 2] = b;
+            data[o + 3] = 255;
+        }
+    }
+    ctx._dbackingCtx.putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(ctx._dbacking, 0, 0, w, h);
+}
