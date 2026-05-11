@@ -4,7 +4,7 @@
 //! JS/Rust interop and exposes the diffusion field in a form a Canvas
 //! renderer can consume cheaply.
 
-use flow::{excitable_gate, phase_to_scalar_field, bulk_gate, gradient_magnitude, gradient_field, advect_by, threshold_event, integrate_field, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
+use flow::{excitable_gate, phase_to_scalar_field, bulk_gate, gradient_magnitude, gradient_field, advect_by, threshold_event, integrate_field, modulate_parameter, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -2955,4 +2955,145 @@ impl WasmCoupledR23 {
 
     pub fn u_field(&self) -> Vec<f64> { self.tissue.u().to_vec() }
     pub fn payload_field(&self) -> Vec<f64> { self.payload.clone() }
+}
+
+// =====================================================================
+// WasmCoupledR24 -- Scar tissue. Phase C opener (C1).
+//
+// The first closed-loop / cybernetic rung. A derived field writes
+// back into the substrate's own parameter:
+//
+//   Barkley.step_with_eps_field(eps_field)        substrate reads
+//   integrate_field(u, memory, ..., leak)         R19
+//   modulate_parameter(memory, ..., eps_field)    new operator
+//
+// History changes responsiveness. Where the wave has been, the
+// tissue takes longer to recover, the wave is pushed away from
+// its own trail.
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR24 {
+    tissue: Barkley2D,
+    memory: Vec<f64>,
+    eps_field: Vec<f64>,
+    base_eps: f64,
+    leak: f64,
+    gain: f64,
+    eps_min: f64,
+    eps_max: f64,
+    dt_step: f64,
+    width: usize,
+    height: usize,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR24 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        diffusion: f64,
+        a: f64,
+        b: f64,
+        base_eps: f64,
+        dx: f64,
+        dt: f64,
+        leak: f64,
+        gain: f64,
+        eps_max: f64,
+    ) -> Result<WasmCoupledR24, JsError> {
+        let tissue = Barkley2D::new(width, height, diffusion, a, b, base_eps, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let n = width * height;
+        Ok(Self {
+            tissue,
+            memory: vec![0.0; n],
+            eps_field: vec![base_eps; n],
+            base_eps,
+            leak,
+            gain,
+            eps_min: base_eps,
+            eps_max,
+            dt_step: dt,
+            width,
+            height,
+        })
+    }
+
+    pub fn step(&mut self) {
+        self.tissue.step_with_eps_field(&self.eps_field, self.eps_min);
+        let u = self.tissue.u();
+        let _ = integrate_field(u, &mut self.memory, self.dt_step, self.leak);
+        let _ = modulate_parameter(
+            &self.memory,
+            self.base_eps,
+            self.gain,
+            self.eps_min,
+            self.eps_max,
+            &mut self.eps_field,
+        );
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_spiral(&mut self) { self.tissue.seed_spiral(); }
+
+    pub fn kick(&mut self, cx: usize, cy: usize, radius: usize, amplitude: f64) {
+        self.tissue.kick(cx, cy, radius, amplitude);
+    }
+
+    pub fn reset_tissue(&mut self) { self.tissue.reset(); }
+    pub fn reset_memory(&mut self) {
+        for v in &mut self.memory { *v = 0.0; }
+        for v in &mut self.eps_field { *v = self.base_eps; }
+    }
+
+    pub fn set_base_eps(&mut self, e: f64) {
+        self.base_eps = e;
+        self.eps_min = e;
+        self.tissue.set_eps(e);
+    }
+    pub fn set_leak(&mut self, leak: f64) { self.leak = leak.max(0.0); }
+    pub fn set_gain(&mut self, gain: f64) { self.gain = gain; }
+    pub fn set_eps_max(&mut self, m: f64) { self.eps_max = m.max(self.eps_min); }
+    pub fn set_a(&mut self, a: f64) { self.tissue.set_a(a); }
+    pub fn set_b(&mut self, b: f64) { self.tissue.set_b(b); }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.width }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.height }
+    #[wasm_bindgen(getter)]
+    pub fn tissue_time(&self) -> f64 { self.tissue.time() }
+
+    pub fn u_mean(&self) -> f64 {
+        let u = self.tissue.u();
+        u.iter().sum::<f64>() / u.len() as f64
+    }
+    pub fn excited_fraction(&self) -> f64 { self.tissue.excited_fraction() }
+    pub fn memory_max(&self) -> f64 {
+        self.memory.iter().cloned().fold(f64::NEG_INFINITY, f64::max).max(0.0)
+    }
+    pub fn memory_mean(&self) -> f64 {
+        self.memory.iter().sum::<f64>() / self.memory.len() as f64
+    }
+    pub fn eps_mean(&self) -> f64 {
+        self.eps_field.iter().sum::<f64>() / self.eps_field.len() as f64
+    }
+    pub fn eps_max_current(&self) -> f64 {
+        self.eps_field.iter().cloned().fold(f64::NEG_INFINITY, f64::max).max(0.0)
+    }
+    /// Fraction of cells whose eps has been raised above 1.5 * base_eps.
+    /// A "how much scar tissue" readout.
+    pub fn scar_fraction(&self) -> f64 {
+        let thresh = self.base_eps * 1.5;
+        let lit = self.eps_field.iter().filter(|&&e| e > thresh).count();
+        lit as f64 / self.eps_field.len() as f64
+    }
+
+    pub fn u_field(&self) -> Vec<f64> { self.tissue.u().to_vec() }
+    pub fn memory_field(&self) -> Vec<f64> { self.memory.clone() }
+    pub fn eps_field(&self) -> Vec<f64> { self.eps_field.clone() }
 }

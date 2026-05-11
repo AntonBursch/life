@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R24 — Scar tissue · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .tri {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .tri figure { margin: 0; }
+            .tri canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .tri figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .tri { grid-template-columns: repeat(1, 1fr); }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r23-excitable-courier/">← R23</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R24 — Scar tissue</h1>
+        <p class="muted">
+            Phase C opener. The first <strong>closed loop</strong>.
+            Past activity does not just shape what the dye sees
+            (R22) or where it is carried (R23) — it shapes what
+            the <em>tissue itself</em> will do next.
+            <code>integrate_field</code> builds a memory of u;
+            the new operator <code>modulate_parameter</code> turns
+            that memory into a per-cell excitable parameter
+            <code>ε(x) = ε₀ + gain · memory</code>; Barkley reads
+            that field via <code>step_with_eps_field</code>. The
+            wave writes its own substrate.
+        </p>
+
+        <div class="tri">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>1 · u (live wave)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="memCanvas"></canvas>
+                <figcaption>2 · memory = ∫ u (leaky)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="epsCanvas"></canvas>
+                <figcaption>3 · ε(x) — scar tissue</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseedWave">↻ Reseed spiral</button>
+            <button id="resetMem">↻ Heal scar</button>
+            <button id="kick">⚡ Kick centre</button>
+        </div>
+
+        <div class="controls">
+            <label for="gain">gain (mem → ε)</label>
+            <input id="gain" type="range" min="0" max="0.10" value="0.02" step="0.005" />
+            <span id="gainV" class="value">0.020</span>
+
+            <label for="leak">leak (1/τ)</label>
+            <input id="leak" type="range" min="0.02" max="1.0" value="0.10" step="0.01" />
+            <span id="leakV" class="value">0.10</span>
+
+            <label for="epsMax">ε ceiling</label>
+            <input id="epsMax" type="range" min="0.03" max="0.40" value="0.12" step="0.01" />
+            <span id="epsMaxV" class="value">0.12</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="16" value="6" step="1" />
+            <span id="speedV" class="value">6</span>
+        </div>
+
+        <p class="muted">
+            Panel 3 is the scar map — brighter cells take longer
+            to recover from excitation, the wave drags or stalls
+            there. With moderate gain, the system reaches a
+            <em>homeostatic equilibrium</em>: the spiral keeps
+            firing but at reduced territory, regulated by its
+            own trail. With high gain, the wave kills itself.
+            With zero gain, the loop is broken and you have R7
+            again.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (tissue)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">excited frac</span> <span class="v" id="rEx">0.000</span></div>
+            <div><span class="k">&lt;u&gt;</span> <span class="v" id="rUm">0.000</span></div>
+            <div><span class="k">τ = 1/leak</span> <span class="v" id="rTau">10.0</span></div>
+            <div><span class="k">&lt;memory&gt;</span> <span class="v" id="rMm">0.000</span></div>
+            <div><span class="k">max memory</span> <span class="v" id="rMx">0.000</span></div>
+            <div><span class="k">&lt;ε&gt;</span> <span class="v" id="rEm">0.020</span></div>
+            <div><span class="k">max ε</span> <span class="v" id="rEmx">0.020</span></div>
+            <div><span class="k">scar fraction</span> <span class="v" id="rSc">0.0%</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            <em>The substrate's own dynamics depend on its own
+            history. The wave is not running on a fixed stage;
+            it is rewriting the stage as it goes.</em>
+        </p>
+        <p>
+            Until this rung every rung was feedforward.
+            Substrate produced a field, operators read it, the
+            substrate didn't notice. R24 closes the loop: the
+            integral of past activity becomes a parameter that
+            the substrate <em>itself</em> reads on its next
+            step. With moderate gain the system regulates —
+            it cannot run hot for long because hot regions
+            become slow regions. That is the minimum signature
+            of cybernetics: a system whose own output is one of
+            its inputs. Three operators (one of them new), one
+            substrate hook (<code>step_with_eps_field</code>),
+            and the wave starts shaping itself.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default (gain 0.02).</strong> Wave
+                settles into a steady reduced state — excited
+                fraction stabilises around half of its R7
+                baseline. The scar map fills in a halo around
+                the spiral; the wave keeps spinning but inside
+                a region of its own choosing.
+            </li>
+            <li>
+                <strong>Gain = 0.</strong> Loop opened. Memory
+                still builds but never feeds back to ε. This is
+                R7 / R19 — the wave runs forever at full power.
+                Direct A/B with default proves the cybernetic
+                effect is in the loop, not in the substrate.
+            </li>
+            <li>
+                <strong>High gain (0.05+).</strong> The wave
+                lays scar faster than it can travel and
+                strangles itself. <code>excited frac</code>
+                collapses to zero.
+            </li>
+            <li>
+                <strong>Heal scar.</strong> Resets memory and
+                ε to baseline without disturbing u. The wave
+                that was wedged in a shrinking region suddenly
+                has the whole grid available again.
+            </li>
+            <li>
+                <strong>Long memory (leak = 0.02, τ = 50).</strong>
+                Memory accumulates without forgetting; even
+                low gain eventually kills the wave. Memory
+                length matters as much as feedback strength.
+            </li>
+            <li>
+                <strong>Short memory (leak = 1.0, τ = 1).</strong>
+                Memory barely persists; ε flickers but does not
+                build a permanent scar. Loop is closed but
+                doesn't bite.
+            </li>
+        </ol>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

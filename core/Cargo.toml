@@ -25,6 +25,7 @@ members = [
     "r21-sensor-and-alarm",
     "r22-memory-shapes-flow",
     "r23-excitable-courier",
+    "r24-scar-tissue",
     "server",
     "flow-wasm",
 ]

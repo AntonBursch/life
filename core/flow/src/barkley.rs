@@ -219,6 +219,40 @@ impl Barkley2D {
         for _ in 0..n { self.step(); }
     }
 
+    /// Step with a per-cell `eps` field. Each cell `k` uses
+    /// `eps_field[k]` instead of the scalar `self.eps`. Values are
+    /// clamped to `>= eps_min` to avoid 1/eps blowup; pass
+    /// `eps_min = self.eps` to use the base eps as a floor.
+    ///
+    /// This is the "parametrise" hook: it lets a downstream operator
+    /// turn a continuous field into a *local* control over how
+    /// excitable each piece of tissue is. Used by R24 (scar tissue)
+    /// and R25 (homeostasis).
+    pub fn step_with_eps_field(&mut self, eps_field: &[f64], eps_min: f64) {
+        assert_eq!(eps_field.len(), self.u.len(), "eps_field length mismatch");
+        self.compute_laplacian();
+        let n = self.u.len();
+        let dt = self.dt;
+        let d = self.diffusion;
+        let a = self.a;
+        let b = self.b;
+        let floor = eps_min.max(1e-6);
+        for k in 0..n {
+            let u = self.u[k];
+            let v = self.v[k];
+            let e = eps_field[k].max(floor);
+            let inv_eps = 1.0 / e;
+            let du = d * self.lap[k] + inv_eps * u * (1.0 - u) * (u - (v + b) / a);
+            let dv = u - v;
+            self.u_next[k] = u + dt * du;
+            self.v_next[k] = v + dt * dv;
+        }
+        std::mem::swap(&mut self.u, &mut self.u_next);
+        std::mem::swap(&mut self.v, &mut self.v_next);
+        self.time += dt;
+        self.steps += 1;
+    }
+
     /// Fraction of cells whose `u` is above the half-excitation level.
     /// Proxy for "how much wavefront is in the box."
     pub fn excited_fraction(&self) -> f64 {

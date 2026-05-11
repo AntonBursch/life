@@ -364,6 +364,42 @@ pub fn integrate_field(
     Ok(())
 }
 
+/// Affine map from a control field `x` into a substrate parameter
+/// field `p`, with clamping. Writes `p[k] = clamp(base + gain * x[k], p_min, p_max)`.
+///
+/// This is the *parametrise* operator: it is how a field becomes a
+/// local control over how a substrate behaves. Where every prior
+/// operator either reads off a field, transports a field, or
+/// reduces a field to events, this one writes back into the
+/// parameter that the substrate's dynamics depend on. It is the
+/// minimum hook required to close a feedback loop -- the past
+/// (carried by `x`, typically a leaky integral) sets the future
+/// (carried by `p`, a per-cell parameter that the next step of the
+/// substrate will read).
+///
+/// Operator alphabet category: "parametrise" (the first new
+/// category since Phase A; opens Phase C / cybernetic rungs).
+pub fn modulate_parameter(
+    x: &[f64],
+    base: f64,
+    gain: f64,
+    p_min: f64,
+    p_max: f64,
+    p: &mut [f64],
+) -> Result<(), CouplingError> {
+    if x.len() != p.len() {
+        return Err(CouplingError::SizeMismatch);
+    }
+    if !(p_max >= p_min) {
+        return Err(CouplingError::BadParam { name: "p_max", value: p_max });
+    }
+    for k in 0..x.len() {
+        let raw = base + gain * x[k];
+        p[k] = raw.clamp(p_min, p_max);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
