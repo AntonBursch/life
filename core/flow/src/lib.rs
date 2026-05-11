@@ -12,6 +12,7 @@ pub mod cahn_hilliard;
 pub mod convection;
 pub mod diffusion;
 pub mod gray_scott;
+pub mod kuramoto;
 pub mod swift_hohenberg;
 
 pub use advection::AdvectionDiffusion1D;
@@ -20,4 +21,5 @@ pub use cahn_hilliard::CahnHilliard2D;
 pub use convection::Convection2D;
 pub use diffusion::{Diffusion1D, BoundaryCondition};
 pub use gray_scott::GrayScott2D;
+pub use kuramoto::Kuramoto2D;
 pub use swift_hohenberg::SwiftHohenberg2D;

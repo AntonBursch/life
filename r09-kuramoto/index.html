@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R9 — Kuramoto · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r08-cahn-hilliard/">← R8</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R9 — Synchrony</h1>
+        <p class="muted">
+            R7 was excitation. R8 was conservation. R9 is the third
+            substrate: <em>phase</em>. Every cell is a clock, ticking
+            at its own slightly different frequency, frozen for life.
+            Each clock is gently nudged by its four neighbours. For
+            weak coupling the population is a static of mismatched
+            rhythms — colours boil at random. Above a critical
+            coupling, blobs of cells start to lock together: same
+            phase, same beat, same colour. Above a higher coupling,
+            the whole tissue locks into a single sheet of synchronised
+            time. The unit of information here isn't a wave or a
+            domain. It's a beat.
+        </p>
+
+        <div class="canvas-wrap">
+            <canvas
+                id="field"
+                style="
+                    height: 380px;
+                    aspect-ratio: 1 / 1;
+                "
+            ></canvas>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseed">↻ Reseed phases</button>
+            <button id="newpop">↻ New population</button>
+        </div>
+
+        <div class="controls">
+            <label for="kval">coupling K</label>
+            <input id="kval" type="range" min="0" max="6" value="2" step="0.05" />
+            <span id="kvalV" class="value">2.00</span>
+
+            <label for="sval">frequency spread σ</label>
+            <input id="sval" type="range" min="0" max="1" value="0.3" step="0.02" />
+            <span id="svalV" class="value">0.30</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="200" value="50" step="5" />
+            <span id="speedV" class="value">50</span>
+        </div>
+
+        <p class="muted">
+            Move <code>K</code> to find the sync onset. Below the
+            critical coupling, no colour bands form. Above it, blobs of
+            same-colour appear. Push <code>K</code> higher and the
+            whole canvas turns to one colour, slowly rotating through
+            the rainbow. Push <code>σ</code> higher and you make the
+            clocks more different — the same <code>K</code> can no
+            longer hold them.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">time</span> <span class="v" id="rT">0</span></div>
+            <div>
+                <span class="k">coupling K</span>
+                <span class="v" id="rK">0</span>
+            </div>
+            <div>
+                <span class="k">spread σ</span>
+                <span class="v" id="rS">0</span>
+            </div>
+            <div>
+                <span class="k">order parameter r</span>
+                <span class="v" id="rR">0.000</span>
+            </div>
+            <div>
+                <span class="k">mean phase ψ</span>
+                <span class="v" id="rPsi">0</span>
+            </div>
+            <div>
+                <span class="k">regime</span>
+                <span class="v" id="rRegime">incoherent</span>
+            </div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            Take a chorus of crickets. Each cricket has its own preferred
+            chirp rate, set at birth. Each cricket also slightly speeds
+            up when it hears its neighbour chirp just before it, and
+            slightly slows down when it hears its neighbour chirp just
+            after. That is all. There is no conductor. There is no
+            shared clock. Below a certain hearing range, every cricket
+            chirps to its own beat, and the meadow sounds like static.
+            Above that range, the crickets find each other. Local
+            patches lock into common rhythms. Patches grow. Patches
+            merge. Eventually the entire meadow chirps in time. The
+            unison was not imposed; it self-assembled out of a
+            population of independent clocks with only nearest-neighbour
+            sensitivity.
+        </p>
+        <p>
+            That story, stripped to one differential equation per cell,
+            is the Kuramoto model. The math is shockingly simple:
+            each cell's phase drifts at its own natural frequency plus
+            a coupling term that pulls it toward its neighbours' phases.
+            The result is the sharpest universality probe yet in the
+            ladder. Fireflies, pacemaker cells in the heart, gamma-band
+            EEG oscillations, lasers locking modes, power-grid
+            generators, audience clapping — they all collapse onto
+            this one little equation when you squint hard enough.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Start at K = 0.</strong> Every clock ticks
+                alone. The canvas is a noisy rainbow that boils. The
+                order parameter <code>r</code> hovers near zero.
+            </li>
+            <li>
+                <strong>Slide K up.</strong> Around <code>K ≈ 2.5</code>
+                you start to see same-colour blobs forming. They are
+                domains of mutually phase-locked cells. <code>r</code>
+                lifts off zero.
+            </li>
+            <li>
+                <strong>Push K to 4 or 5.</strong> Almost the whole
+                canvas locks into a single colour that slowly drifts
+                through the spectrum. <code>r</code> climbs above 0.6.
+                The drift is the locked population's
+                <em>collective frequency</em>.
+            </li>
+            <li>
+                <strong>Reset phases.</strong> Hit <code>↻ Reseed
+                phases</code>. The colours scramble but the same
+                steady <code>r</code> regrows. The order is in the
+                clocks, not the initial conditions.
+            </li>
+            <li>
+                <strong>Push σ up.</strong> The natural frequencies
+                spread further apart. The same coupling now fails to
+                hold sync. <code>r</code> falls. This is the heart of
+                the Kuramoto phase diagram: there is a critical curve
+                in <code>(K, σ)</code> space, and the meadow is either
+                above it or below it.
+            </li>
+            <li>
+                <strong>Topological pinning.</strong> Even at high
+                <code>K</code> you'll sometimes see persistent
+                <em>vortex</em> defects — points where all the colours
+                meet — that refuse to anneal away. These are real
+                topological obstructions in 2D phase fields, the same
+                family as XY-model vortices. They limit how high
+                <code>r</code> can climb on a torus.
+            </li>
+        </ol>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>A phase transition you can feel.</strong>
+                Move the K slider slowly. There is a region where
+                nothing visible happens, then a narrow range where
+                blobs appear, then a regime where one colour takes
+                over. This is one of the cleanest second-order phase
+                transitions in nature, displayed on a knob.
+            </li>
+            <li>
+                <strong>Same colour = same time.</strong> Two cells
+                with the same colour are at the same point in their
+                cycle. Long-range colour matching means long-range
+                temporal correlation. The colourful image is a
+                literal map of who-fires-with-whom.
+            </li>
+            <li>
+                <strong>Mean phase ψ rotates.</strong> Even in deep
+                sync, the locked population is a single clock,
+                ticking at the population's collective frequency. The
+                whole canvas slowly rotates through the rainbow. The
+                readout's <code>ψ</code> winds.
+            </li>
+            <li>
+                <strong>The order parameter is not a hand-wave.</strong>
+                <code>r</code> is the magnitude of the population's
+                mean unit-vector. <code>r = 0</code> exactly means the
+                vectors cancel. <code>r = 1</code> exactly means they
+                all point the same way. Nothing else can produce a
+                number in between but a real distribution of phases.
+            </li>
+        </ul>
+
+        <h2>why this rung matters</h2>
+        <p>
+            With R9 the substrate menu is full. R4 is chemistry. R5 is
+            drive. R6 is the universal pattern kernel. R7 is excitation
+            with a refractory tail. R8 is conservation under a free
+            energy. R9 is phase coupling. Every other "endogenous
+            organisation" model in the literature — from neural
+            oscillators to swarm rhythms to coupled circadian
+            populations — is some combination of these five primitives,
+            in some geometry, with some forcing. You can now build any
+            of them by composing rungs of this ladder.
+        </p>
+        <p>
+            More concretely: R9 is where the ladder finally produces
+            something that looks like a <em>brain rhythm</em>. The
+            locked-population drift of <code>ψ</code> at high
+            <code>K</code> is what a neuroscientist would call a
+            collective oscillation — the substrate of EEG bands, of
+            binding-by-synchrony, of the gamma-band rhythms that
+            coordinate cortical areas across long distances. Kuramoto
+            is the math behind "the brain plays in time with itself."
+        </p>
+
+        <p class="muted">
+            Math + code in
+            <a href="../notes/01-flow.md">notes/01-flow.md</a>. R9 closes
+            the first ladder. From here the moves are composition: same
+            kernels, multiple species, layered substrates, learnable
+            couplings. The single-mechanism phase is over; the
+            compose-them phase begins.
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

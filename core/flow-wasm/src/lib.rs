@@ -4,7 +4,7 @@
 //! JS/Rust interop and exposes the diffusion field in a form a Canvas
 //! renderer can consume cheaply.
 
-use flow::{AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, SwiftHohenberg2D};
+use flow::{AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -636,4 +636,62 @@ impl WasmCahnHilliard2D {
     pub fn free_energy(&self) -> f64 { self.inner.free_energy() }
 
     pub fn c_field(&self) -> Vec<f64> { self.inner.c().to_vec() }
+}
+
+/// R9 — Kuramoto phase oscillators on a 2D periodic grid with local
+/// 4-neighbour coupling.
+#[wasm_bindgen]
+pub struct WasmKuramoto2D {
+    inner: Kuramoto2D,
+}
+
+#[wasm_bindgen]
+impl WasmKuramoto2D {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        coupling: f64,
+        dt: f64,
+    ) -> Result<WasmKuramoto2D, JsError> {
+        let inner = Kuramoto2D::new(width, height, coupling, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    pub fn step(&mut self) { self.inner.step(); }
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.inner.step(); }
+    }
+    pub fn randomise_phases(&mut self, seed: u32) {
+        self.inner.randomise_phases(seed as u64);
+    }
+    pub fn set_natural_frequencies(&mut self, sigma: f64, seed: u32) {
+        self.inner.set_natural_frequencies(sigma, seed as u64);
+    }
+    pub fn set_uniform_frequency(&mut self, omega: f64) {
+        self.inner.set_uniform_frequency(omega);
+    }
+    pub fn set_coupling(&mut self, k: f64) { self.inner.set_coupling(k); }
+    pub fn reset_time(&mut self) { self.inner.reset_time(); }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.inner.width() }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.inner.height() }
+    #[wasm_bindgen(getter)]
+    pub fn time(&self) -> f64 { self.inner.time() }
+    #[wasm_bindgen(getter)]
+    pub fn coupling(&self) -> f64 { self.inner.coupling() }
+    #[wasm_bindgen(getter)]
+    pub fn order_parameter(&self) -> f64 { self.inner.order_parameter() }
+    #[wasm_bindgen(getter)]
+    pub fn mean_phase(&self) -> f64 { self.inner.mean_phase() }
+    #[wasm_bindgen(getter)]
+    pub fn circular_variance(&self) -> f64 { self.inner.circular_variance() }
+    #[wasm_bindgen(getter)]
+    pub fn natural_freq_stddev(&self) -> f64 { self.inner.natural_freq_stddev() }
+
+    pub fn theta_field(&self) -> Vec<f64> { self.inner.theta().to_vec() }
+    pub fn omega_field(&self) -> Vec<f64> { self.inner.omega().to_vec() }
 }

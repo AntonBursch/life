@@ -205,3 +205,54 @@ export function drawField2DDiverging(ctx, w, h, field, gw, gh, vmax) {
     ctx.clearRect(0, 0, w, h);
     ctx.drawImage(ctx._dbacking, 0, 0, w, h);
 }
+
+/**
+ * Draw a 2D phase field (values in (-pi, pi]) with a cyclic colormap.
+ * Hue cycles once over [-pi, +pi); same colour ↔ same phase.
+ */
+export function drawField2DPhase(ctx, w, h, field, gw, gh) {
+    if (!field.length) {
+        ctx.clearRect(0, 0, w, h);
+        return;
+    }
+    if (!ctx._pbacking || ctx._pbacking.width !== gw || ctx._pbacking.height !== gh) {
+        const off = document.createElement("canvas");
+        off.width = gw;
+        off.height = gh;
+        ctx._pbacking = off;
+        ctx._pbackingCtx = off.getContext("2d");
+        ctx._pbackingImg = ctx._pbackingCtx.createImageData(gw, gh);
+    }
+    const img = ctx._pbackingImg;
+    const data = img.data;
+    const TAU = Math.PI * 2;
+    for (let j = 0; j < gh; j++) {
+        const row = j * gw;
+        for (let i = 0; i < gw; i++) {
+            const t = field[row + i];
+            // Map (-pi, pi] -> [0, 1) hue, full saturation/value.
+            let hue = (t + Math.PI) / TAU;
+            if (hue < 0) hue += 1; else if (hue >= 1) hue -= 1;
+            // HSV -> RGB with s=1, v=1.
+            const h6 = hue * 6;
+            const c = 255;
+            const x = Math.round(c * (1 - Math.abs((h6 % 2) - 1)));
+            let r, g, b;
+            if      (h6 < 1) { r = c; g = x; b = 0; }
+            else if (h6 < 2) { r = x; g = c; b = 0; }
+            else if (h6 < 3) { r = 0; g = c; b = x; }
+            else if (h6 < 4) { r = 0; g = x; b = c; }
+            else if (h6 < 5) { r = x; g = 0; b = c; }
+            else             { r = c; g = 0; b = x; }
+            const o = (row + i) * 4;
+            data[o] = r;
+            data[o + 1] = g;
+            data[o + 2] = b;
+            data[o + 3] = 255;
+        }
+    }
+    ctx._pbackingCtx.putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(ctx._pbacking, 0, 0, w, h);
+}

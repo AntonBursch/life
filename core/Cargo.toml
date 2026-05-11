@@ -10,6 +10,7 @@ members = [
     "r06-swift-hohenberg",
     "r07-excitable",
     "r08-cahn-hilliard",
+    "r09-kuramoto",
     "server",
     "flow-wasm",
 ]
