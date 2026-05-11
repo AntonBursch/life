@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R21 — Sensor and alarm · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .tri {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .tri figure { margin: 0; }
+            .tri canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .tri figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .tri { grid-template-columns: repeat(1, 1fr); }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r20-events-seed-matter/">← R20</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R21 — Sensor and alarm</h1>
+        <p class="muted">
+            Second Phase-B composition. No new operator. Chains
+            two Phase-A primitives plus a latch:
+            <code>integrate_field</code> (R19) smooths the raw
+            Barkley activator u into a leaky time-average;
+            <code>threshold_event</code> (R18) fires on the
+            rising edge of the <em>averaged</em> signal; an
+            OR-latch keeps the alarm bit set once raised.
+            Same threshold, same wave, but the integrator turns
+            "instantly excitable" into "persistently excited".
+        </p>
+
+        <div class="tri">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>1 · u (raw activator)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="avgCanvas"></canvas>
+                <figcaption>2 · ⟨u⟩ leaky average</figcaption>
+            </figure>
+            <figure>
+                <canvas id="alarmCanvas"></canvas>
+                <figcaption>3 · alarm (latched)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseed">↻ Reseed spiral</button>
+            <button id="resetSensor">↻ Reset sensor</button>
+            <button id="resetAlarm">↻ Reset alarm</button>
+            <button id="kick">⚡ Kick centre</button>
+        </div>
+
+        <div class="controls">
+            <label for="leak">leak (1/τ)</label>
+            <input id="leak" type="range" min="0.05" max="2.0" value="0.2" step="0.05" />
+            <span id="leakV" class="value">0.20</span>
+
+            <label for="alarmTh">alarm threshold</label>
+            <input id="alarmTh" type="range" min="0.05" max="1.5" value="0.3" step="0.05" />
+            <span id="alarmThV" class="value">0.30</span>
+
+            <label for="eps">excitable ε</label>
+            <input id="eps" type="range" min="0.005" max="0.05" value="0.02" step="0.005" />
+            <span id="epsV" class="value">0.020</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="12" value="4" step="1" />
+            <span id="speedV" class="value">4</span>
+        </div>
+
+        <p class="muted">
+            Read in order. Panel 1: the wave that does the
+            sensing. Panel 2: its leaky integral — how much
+            activity each cell has accumulated, with time
+            constant τ = 1/leak. Panel 3: the latched alarm map
+            — cells where ⟨u⟩ has, at some point, crossed the
+            trip threshold. The alarm only grows. Try kicking
+            once and watching: a single transient bump barely
+            lifts panel 2 and never reaches panel 3. Only
+            sustained or repeated excitation latches.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (tissue)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">&lt;u&gt;</span> <span class="v" id="rUm">0.000</span></div>
+            <div><span class="k">τ = 1/leak</span> <span class="v" id="rTau">5.00</span></div>
+            <div><span class="k">&lt;⟨u⟩&gt;</span> <span class="v" id="rAvgM">0.000</span></div>
+            <div><span class="k">max ⟨u⟩</span> <span class="v" id="rAvgMx">0.000</span></div>
+            <div><span class="k">trips / step</span> <span class="v" id="rTripStep">0</span></div>
+            <div><span class="k">cum trips</span> <span class="v" id="rTripCum">0</span></div>
+            <div><span class="k">alarm coverage</span> <span class="v" id="rCov">0.0%</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            <em>Transient excitation should not trip the alarm;
+            sustained excitation should.</em>
+        </p>
+        <p>
+            R18 thresholds the raw signal u and fires on every
+            wave passage — wherever the wave goes, an event
+            appears, immediately. R21 thresholds the
+            <em>leaky integral</em> of u. A cell has to keep being
+            excited for long enough that its running average
+            climbs past the trip level. Once it does, an OR-latch
+            holds the bit. That is the architecture of an
+            industrial sensor: smooth the signal, trip on the
+            smoothed value, latch the trip. Two operators and a
+            single bit of state per cell.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> τ = 5, threshold = 0.3.
+                The alarm map fills in gradually — not on the
+                first wave passage but after several. Watch
+                panel 2's ⟨u⟩ build up where the spiral revisits
+                often.
+            </li>
+            <li>
+                <strong>Reset sensor (not alarm).</strong> Wipes
+                ⟨u⟩ but keeps the latched bits. Useful to confirm
+                the alarm is *truly* a latch: panel 3 does not
+                clear.
+            </li>
+            <li>
+                <strong>Reset alarm (not sensor).</strong> Wipes
+                the latch but keeps the integrator state. The
+                cells currently above threshold trip again on
+                their next rising edge.
+            </li>
+            <li>
+                <strong>Short memory (leak = 2, τ = 0.5).</strong>
+                The integrator can barely accumulate. ⟨u⟩ tracks
+                u closely. Behaviour collapses toward R18 — every
+                visited cell trips quickly.
+            </li>
+            <li>
+                <strong>Long memory (leak = 0.05, τ = 20).</strong>
+                Very slow accumulation. The alarm map fills in
+                much more slowly; many cells that the wave
+                grazes briefly never trip.
+            </li>
+            <li>
+                <strong>Higher threshold.</strong> Only the
+                hottest patches — typically the spiral core
+                neighbourhood — ever latch. The alarm becomes a
+                "this region got hit hard" map.
+            </li>
+            <li>
+                <strong>Kick on a blank field.</strong> Reset
+                tissue, then kick. A single bump shows up in
+                panel 2 as a small bright patch that decays. With
+                threshold ≥ 0.3 it never latches. Same operator
+                chain, but transient ≠ sustained.
+            </li>
+        </ol>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

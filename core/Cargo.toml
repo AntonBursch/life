@@ -22,6 +22,7 @@ members = [
     "r18-waves-leave-marks",
     "r19-memory-of-waves",
     "r20-events-seed-matter",
+    "r21-sensor-and-alarm",
     "server",
     "flow-wasm",
 ]

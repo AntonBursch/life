@@ -2469,3 +2469,159 @@ impl WasmCoupledR20 {
     pub fn chem_v_field(&self) -> Vec<f64> { self.chem.v().to_vec() }
     pub fn chem_u_field(&self) -> Vec<f64> { self.chem.u().to_vec() }
 }
+
+// =====================================================================
+// R21: sensor and alarm. Phase-B composition. No new operator.
+// Chains integrate_field (R19) -> threshold_event (R18) and adds a
+// latch. The leaky average smooths the raw Barkley activator u
+// over time-constant tau = 1/leak; a threshold_event on the
+// *averaged* field fires only when integrated exposure crosses a
+// trip level; an OR-latch keeps the alarm bit set once raised.
+// Difference from R18: R18 fires on every wave passage at the raw
+// signal; R21 fires only when activity has been *sustained*.
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR21 {
+    tissue: Barkley2D,
+    avg: Vec<f64>,
+    prev_avg: Vec<f64>,
+    events: Vec<u8>,
+    alarm: Vec<u8>,
+    leak: f64,
+    alarm_threshold: f64,
+    dt_integrate: f64,
+    cumulative_trips: u64,
+    last_trips: u32,
+    width: usize,
+    height: usize,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR21 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        diffusion: f64,
+        a: f64,
+        b: f64,
+        eps: f64,
+        dx: f64,
+        dt: f64,
+        leak: f64,
+        alarm_threshold: f64,
+    ) -> Result<WasmCoupledR21, JsError> {
+        let tissue = Barkley2D::new(width, height, diffusion, a, b, eps, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let n = width * height;
+        Ok(Self {
+            tissue,
+            avg: vec![0.0; n],
+            prev_avg: vec![0.0; n],
+            events: vec![0; n],
+            alarm: vec![0; n],
+            leak,
+            alarm_threshold,
+            dt_integrate: dt,
+            cumulative_trips: 0,
+            last_trips: 0,
+            width,
+            height,
+        })
+    }
+
+    pub fn step(&mut self) {
+        self.tissue.step();
+        let u = self.tissue.u();
+        self.prev_avg.copy_from_slice(&self.avg);
+        let _ = integrate_field(u, &mut self.avg, self.dt_integrate, self.leak);
+        let _ = threshold_event(
+            &self.prev_avg,
+            &self.avg,
+            self.alarm_threshold,
+            &mut self.events,
+        );
+        let mut trips = 0u32;
+        for k in 0..self.events.len() {
+            if self.events[k] == 1 && self.alarm[k] == 0 {
+                self.alarm[k] = 1;
+                trips += 1;
+            }
+        }
+        self.last_trips = trips;
+        self.cumulative_trips += trips as u64;
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_spiral(&mut self) {
+        self.tissue.seed_spiral();
+        self.reset_sensor();
+        self.reset_alarm();
+    }
+
+    pub fn kick(&mut self, cx: usize, cy: usize, radius: usize, amplitude: f64) {
+        self.tissue.kick(cx, cy, radius, amplitude);
+    }
+
+    pub fn reset_tissue(&mut self) {
+        self.tissue.reset();
+        self.reset_sensor();
+        self.reset_alarm();
+    }
+
+    pub fn reset_sensor(&mut self) {
+        for v in &mut self.avg { *v = 0.0; }
+        for v in &mut self.prev_avg { *v = 0.0; }
+    }
+
+    pub fn reset_alarm(&mut self) {
+        for a in &mut self.alarm { *a = 0; }
+        self.cumulative_trips = 0;
+        self.last_trips = 0;
+    }
+
+    pub fn set_leak(&mut self, leak: f64) { self.leak = leak.max(0.0); }
+    pub fn set_alarm_threshold(&mut self, th: f64) { self.alarm_threshold = th; }
+    pub fn set_a(&mut self, a: f64) { self.tissue.set_a(a); }
+    pub fn set_b(&mut self, b: f64) { self.tissue.set_b(b); }
+    pub fn set_eps(&mut self, e: f64) { self.tissue.set_eps(e); }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.width }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.height }
+    #[wasm_bindgen(getter)]
+    pub fn tissue_time(&self) -> f64 { self.tissue.time() }
+    #[wasm_bindgen(getter)]
+    pub fn leak_value(&self) -> f64 { self.leak }
+    #[wasm_bindgen(getter)]
+    pub fn alarm_threshold_value(&self) -> f64 { self.alarm_threshold }
+    #[wasm_bindgen(getter)]
+    pub fn trips_last_step(&self) -> u32 { self.last_trips }
+    #[wasm_bindgen(getter)]
+    pub fn cumulative_trip_count(&self) -> f64 { self.cumulative_trips as f64 }
+
+    pub fn u_mean(&self) -> f64 {
+        let u = self.tissue.u();
+        u.iter().sum::<f64>() / u.len() as f64
+    }
+    pub fn avg_mean(&self) -> f64 {
+        self.avg.iter().sum::<f64>() / self.avg.len() as f64
+    }
+    pub fn avg_max(&self) -> f64 {
+        self.avg.iter().cloned().fold(f64::NEG_INFINITY, f64::max).max(0.0)
+    }
+    pub fn alarm_coverage(&self) -> f64 {
+        let lit = self.alarm.iter().filter(|x| **x == 1).count();
+        lit as f64 / self.alarm.len() as f64
+    }
+
+    pub fn u_field(&self) -> Vec<f64> { self.tissue.u().to_vec() }
+    pub fn avg_field(&self) -> Vec<f64> { self.avg.clone() }
+    pub fn alarm_field(&self) -> Vec<f64> {
+        self.alarm.iter().map(|a| *a as f64).collect()
+    }
+}
