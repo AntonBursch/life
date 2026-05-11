@@ -4,7 +4,7 @@
 //! JS/Rust interop and exposes the diffusion field in a form a Canvas
 //! renderer can consume cheaply.
 
-use flow::{excitable_gate, phase_to_scalar_field, bulk_gate, gradient_magnitude, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
+use flow::{excitable_gate, phase_to_scalar_field, bulk_gate, gradient_magnitude, gradient_field, advect_by, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -1863,4 +1863,162 @@ impl WasmCoupledR16 {
     pub fn grad_field(&self) -> Vec<f64> { self.grad.clone() }
     pub fn k_coupling_field(&self) -> Vec<f64> { self.k_field.clone() }
     pub fn theta_field(&self) -> Vec<f64> { self.phase.theta().to_vec() }
+}
+
+// =====================================================================
+// R17: territory carries dye. CH (R8) phi field is treated as a
+// stream function. gradient_field reads (dphi/dx, dphi/dy); rotating
+// 90 degrees gives an incompressible velocity v = (dphi/dy, -dphi/dx).
+// advect_by carries a passive dye along the streamlines, which are
+// the level sets of phi. Walls of the territory become rivers; dye
+// circulates along them rather than crossing them.
+//
+// First use of advect_by (transport primitive) and gradient_field
+// (vector read). Operator alphabet category: "transport".
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR17 {
+    territory: CahnHilliard2D,
+    dye: Vec<f64>,
+    dye_next: Vec<f64>,
+    gx: Vec<f64>,
+    gy: Vec<f64>,
+    vx: Vec<f64>,
+    vy: Vec<f64>,
+    v_scale: f64,
+    dt_adv: f64,
+    width: usize,
+    height: usize,
+    dx: f64,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR17 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        mobility: f64,
+        kappa: f64,
+        ch_dx: f64,
+        ch_dt: f64,
+        dt_adv: f64,
+        v_scale: f64,
+    ) -> Result<WasmCoupledR17, JsError> {
+        let territory = CahnHilliard2D::new(width, height, mobility, kappa, ch_dx, ch_dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let n = width * height;
+        Ok(Self {
+            territory,
+            dye: vec![0.5; n],
+            dye_next: vec![0.0; n],
+            gx: vec![0.0; n],
+            gy: vec![0.0; n],
+            vx: vec![0.0; n],
+            vy: vec![0.0; n],
+            v_scale,
+            dt_adv,
+            width, height, dx: ch_dx,
+        })
+    }
+
+    pub fn step(&mut self) {
+        self.territory.step();
+        let _ = gradient_field(
+            self.territory.c(),
+            self.width, self.height, self.dx,
+            &mut self.gx, &mut self.gy,
+        );
+        let s = self.v_scale;
+        for k in 0..self.gx.len() {
+            self.vx[k] =  s * self.gy[k];
+            self.vy[k] = -s * self.gx[k];
+        }
+        let _ = advect_by(
+            &self.dye, &self.vx, &self.vy,
+            self.width, self.height, self.dx, self.dt_adv,
+            &mut self.dye_next,
+        );
+        std::mem::swap(&mut self.dye, &mut self.dye_next);
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_territory(&mut self, amplitude: f64, mean: f64, seed: u32) {
+        self.territory.seed_noise(amplitude, mean, seed as u64);
+    }
+    pub fn reset_territory(&mut self) {
+        self.territory.reset();
+    }
+    pub fn pre_evolve_territory(&mut self, n: u32) {
+        for _ in 0..n { self.territory.step(); }
+    }
+
+    /// Seed dye as horizontal stripes (sin) with `bands` periods.
+    pub fn seed_dye_stripes(&mut self, bands: f64) {
+        for j in 0..self.height {
+            let s = (j as f64 / self.height as f64 * std::f64::consts::TAU * bands).sin();
+            let v = (s + 1.0) * 0.5;
+            for i in 0..self.width {
+                self.dye[j * self.width + i] = v;
+            }
+        }
+    }
+
+    /// Seed dye as vertical stripes.
+    pub fn seed_dye_stripes_vertical(&mut self, bands: f64) {
+        for i in 0..self.width {
+            let s = (i as f64 / self.width as f64 * std::f64::consts::TAU * bands).sin();
+            let v = (s + 1.0) * 0.5;
+            for j in 0..self.height {
+                self.dye[j * self.width + i] = v;
+            }
+        }
+    }
+
+    pub fn set_v_scale(&mut self, v: f64) { self.v_scale = v; }
+    pub fn set_dt_adv(&mut self, v: f64) { if v >= 0.0 { self.dt_adv = v; } }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.width }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.height }
+    #[wasm_bindgen(getter)]
+    pub fn territory_time(&self) -> f64 { self.territory.time() }
+
+    /// Total dye mass (sum). Should stay near initial value.
+    pub fn dye_mass(&self) -> f64 {
+        self.dye.iter().sum()
+    }
+
+    /// Variance of the dye field -- shrinks as numerical diffusion
+    /// erodes the stripe structure.
+    pub fn dye_variance(&self) -> f64 {
+        if self.dye.is_empty() { return 0.0; }
+        let mean = self.dye.iter().sum::<f64>() / self.dye.len() as f64;
+        self.dye.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / self.dye.len() as f64
+    }
+
+    /// Mean speed of the velocity field -- diagnostic for how
+    /// strongly the territory is currently transporting.
+    pub fn mean_speed(&self) -> f64 {
+        if self.vx.is_empty() { return 0.0; }
+        let mut s = 0.0;
+        for k in 0..self.vx.len() {
+            s += (self.vx[k] * self.vx[k] + self.vy[k] * self.vy[k]).sqrt();
+        }
+        s / self.vx.len() as f64
+    }
+
+    pub fn phi_field(&self) -> Vec<f64> { self.territory.c().to_vec() }
+    pub fn vx_field(&self) -> Vec<f64> { self.vx.clone() }
+    pub fn vy_field(&self) -> Vec<f64> { self.vy.clone() }
+    pub fn speed_field(&self) -> Vec<f64> {
+        self.vx.iter().zip(self.vy.iter())
+            .map(|(a, b)| (a * a + b * b).sqrt())
+            .collect()
+    }
+    pub fn dye_field(&self) -> Vec<f64> { self.dye.clone() }
 }

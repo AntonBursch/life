@@ -198,6 +198,114 @@ pub fn gradient_magnitude(
     Ok(())
 }
 
+/// Vector cousin of `gradient_magnitude`: write the per-cell
+/// (dphi/dx, dphi/dy) components of a scalar field `phi` on a
+/// periodic grid into `out_gx`, `out_gy`. Centred differences
+/// with spacing `dx > 0`.
+///
+/// This is the read-vector primitive of the operator alphabet:
+/// where `gradient_magnitude` collapses a gradient to a scalar
+/// "wall intensity", `gradient_field` keeps the direction so it
+/// can be used as a velocity for transport operators downstream.
+pub fn gradient_field(
+    phi: &[f64],
+    width: usize,
+    height: usize,
+    dx: f64,
+    out_gx: &mut [f64],
+    out_gy: &mut [f64],
+) -> Result<(), CouplingError> {
+    if phi.len() != out_gx.len() || phi.len() != out_gy.len() {
+        return Err(CouplingError::SizeMismatch);
+    }
+    if phi.len() != width * height {
+        return Err(CouplingError::SizeMismatch);
+    }
+    if !(dx > 0.0) {
+        return Err(CouplingError::BadParam { name: "dx", value: dx });
+    }
+    let inv_2dx = 0.5 / dx;
+    for j in 0..height {
+        let jn = if j == 0 { height - 1 } else { j - 1 };
+        let js = if j + 1 == height { 0 } else { j + 1 };
+        let row = j * width;
+        let row_n = jn * width;
+        let row_s = js * width;
+        for i in 0..width {
+            let iw = if i == 0 { width - 1 } else { i - 1 };
+            let ie = if i + 1 == width { 0 } else { i + 1 };
+            out_gx[row + i] = (phi[row + ie] - phi[row + iw]) * inv_2dx;
+            out_gy[row + i] = (phi[row_s + i] - phi[row_n + i]) * inv_2dx;
+        }
+    }
+    Ok(())
+}
+
+/// Transport a scalar `field` by a velocity field `(vx, vy)` for a
+/// time step `dt`, on a periodic `width x height` grid with spacing
+/// `dx > 0`. Writes the new field into `out`.
+///
+/// Implementation: semi-Lagrangian with bilinear interpolation.
+/// For each cell `(i,j)` we trace back to the position
+/// `(i - vx*dt/dx, j - vy*dt/dx)` and sample the old field there.
+/// Periodic wrap is exact. Semi-Lagrangian is unconditionally
+/// stable, so `dt` is a quality knob, not a stability knob.
+///
+/// This is the "transport" primitive of the operator alphabet --
+/// the first operator that *moves* mass instead of *gating* or
+/// *reading* it.
+pub fn advect_by(
+    field: &[f64],
+    vx: &[f64],
+    vy: &[f64],
+    width: usize,
+    height: usize,
+    dx: f64,
+    dt: f64,
+    out: &mut [f64],
+) -> Result<(), CouplingError> {
+    let n = width * height;
+    if field.len() != n || vx.len() != n || vy.len() != n || out.len() != n {
+        return Err(CouplingError::SizeMismatch);
+    }
+    if !(dx > 0.0) {
+        return Err(CouplingError::BadParam { name: "dx", value: dx });
+    }
+    if !(dt >= 0.0) {
+        return Err(CouplingError::BadParam { name: "dt", value: dt });
+    }
+    let w = width as f64;
+    let h = height as f64;
+    let inv_dx = 1.0 / dx;
+    for j in 0..height {
+        let row = j * width;
+        for i in 0..width {
+            // Trace back in index space (one cell = dx).
+            let mut x = i as f64 - vx[row + i] * dt * inv_dx;
+            let mut y = j as f64 - vy[row + i] * dt * inv_dx;
+            // Periodic wrap in continuous index space.
+            x = x - (x / w).floor() * w;
+            y = y - (y / h).floor() * h;
+            let i0 = x.floor() as usize % width;
+            let j0 = y.floor() as usize % height;
+            let i1 = if i0 + 1 == width { 0 } else { i0 + 1 };
+            let j1 = if j0 + 1 == height { 0 } else { j0 + 1 };
+            let fx = x - x.floor();
+            let fy = y - y.floor();
+            let r0 = j0 * width;
+            let r1 = j1 * width;
+            let f00 = field[r0 + i0];
+            let f10 = field[r0 + i1];
+            let f01 = field[r1 + i0];
+            let f11 = field[r1 + i1];
+            let f0 = f00 * (1.0 - fx) + f10 * fx;
+            let f1 = f01 * (1.0 - fx) + f11 * fx;
+            out[row + i] = f0 * (1.0 - fy) + f1 * fy;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -413,6 +521,94 @@ mod tests {
         assert!(matches!(
             gradient_magnitude(&phi, 3, 3, 0.0, &mut out2).unwrap_err(),
             CouplingError::BadParam { name: "dx", .. }
+        ));
+    }
+
+    #[test]
+    fn gradient_field_linear_ramp() {
+        // phi[i,j] = i  -> dphi/dx = 1, dphi/dy = 0
+        let w = 16;
+        let h = 4;
+        let mut phi = vec![0.0_f64; w * h];
+        for j in 0..h {
+            for i in 0..w {
+                phi[j * w + i] = i as f64;
+            }
+        }
+        let mut gx = vec![0.0_f64; w * h];
+        let mut gy = vec![0.0_f64; w * h];
+        gradient_field(&phi, w, h, 1.0, &mut gx, &mut gy).unwrap();
+        for j in 0..h {
+            for i in 1..w - 1 {
+                assert!((gx[j * w + i] - 1.0).abs() < 1e-12);
+                assert!(gy[j * w + i].abs() < 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn advect_by_zero_velocity_is_identity() {
+        let w = 8;
+        let h = 8;
+        let mut field = vec![0.0_f64; w * h];
+        for k in 0..field.len() {
+            field[k] = (k as f64) * 0.1;
+        }
+        let vx = vec![0.0_f64; w * h];
+        let vy = vec![0.0_f64; w * h];
+        let mut out = vec![999.0_f64; w * h];
+        advect_by(&field, &vx, &vy, w, h, 1.0, 0.5, &mut out).unwrap();
+        for k in 0..field.len() {
+            assert!((out[k] - field[k]).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn advect_by_uniform_flow_translates() {
+        // Uniform vx = 1, dt = 1, dx = 1 -> shift field by one cell to +x
+        // (semi-Lagrangian samples at i - 1).
+        let w = 8;
+        let h = 4;
+        let mut field = vec![0.0_f64; w * h];
+        for j in 0..h {
+            for i in 0..w {
+                field[j * w + i] = i as f64;
+            }
+        }
+        let vx = vec![1.0_f64; w * h];
+        let vy = vec![0.0_f64; w * h];
+        let mut out = vec![0.0_f64; w * h];
+        advect_by(&field, &vx, &vy, w, h, 1.0, 1.0, &mut out).unwrap();
+        for j in 0..h {
+            for i in 0..w {
+                // out[i] = field[i - 1 mod w]
+                let src = if i == 0 { w - 1 } else { i - 1 };
+                let expected = field[j * w + src];
+                assert!(
+                    (out[j * w + i] - expected).abs() < 1e-9,
+                    "out[{},{}]={} expected {}", i, j, out[j * w + i], expected
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn advect_by_rejects_bad_inputs() {
+        let f = vec![0.0_f64; 9];
+        let v = vec![0.0_f64; 9];
+        let mut out_short = vec![0.0_f64; 8];
+        assert_eq!(
+            advect_by(&f, &v, &v, 3, 3, 1.0, 0.1, &mut out_short),
+            Err(CouplingError::SizeMismatch)
+        );
+        let mut out = vec![0.0_f64; 9];
+        assert!(matches!(
+            advect_by(&f, &v, &v, 3, 3, 0.0, 0.1, &mut out).unwrap_err(),
+            CouplingError::BadParam { name: "dx", .. }
+        ));
+        assert!(matches!(
+            advect_by(&f, &v, &v, 3, 3, 1.0, -0.1, &mut out).unwrap_err(),
+            CouplingError::BadParam { name: "dt", .. }
         ));
     }
 }

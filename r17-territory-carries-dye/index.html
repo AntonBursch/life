@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R17 — Territory carries dye · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .quad {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .quad figure { margin: 0; }
+            .quad canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .quad figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .quad { grid-template-columns: repeat(2, 1fr); }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r16-walls-route-sync/">← R16</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R17 — Territory carries dye</h1>
+        <p class="muted">
+            Eighth composition. New operator
+            <code>advect_by</code>: the kit's first transport
+            primitive. New helper operator
+            <code>gradient_field</code> reads the vector slope of φ.
+            Same Cahn-Hilliard territory as R12, R15, R16 — now
+            <em>treated as a stream function</em>. A 90° rotation
+            of its gradient makes a divergence-free velocity. A
+            passive dye, seeded as stripes, is carried along the
+            streamlines (which are the level sets of φ).  The wall
+            network becomes a network of rivers.
+        </p>
+
+        <div class="quad">
+            <figure>
+                <canvas id="phiCanvas"></canvas>
+                <figcaption>1 · Territory φ (stream func)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="speedCanvas"></canvas>
+                <figcaption>2 · |v| = |∇φ| (wall flow)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="vxCanvas"></canvas>
+                <figcaption>3 · v<sub>x</sub> (direction sign)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="dyeCanvas"></canvas>
+                <figcaption>4 · Dye (passive tracer)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reterritory">↻ New territory</button>
+            <button id="reseedH">↻ Reseed dye (horiz.)</button>
+            <button id="reseedV">↻ Reseed dye (vert.)</button>
+        </div>
+
+        <div class="controls">
+            <label for="vscale">velocity scale</label>
+            <input id="vscale" type="range" min="0" max="10" value="4" step="0.1" />
+            <span id="vscaleV" class="value">4.0</span>
+
+            <label for="dtadv">advect Δt</label>
+            <input id="dtadv" type="range" min="0.02" max="0.5" value="0.1" step="0.01" />
+            <span id="dtadvV" class="value">0.10</span>
+
+            <label for="bands">stripe count (reseed)</label>
+            <input id="bands" type="range" min="1" max="10" value="3" step="1" />
+            <span id="bandsV" class="value">3</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="12" value="3" step="1" />
+            <span id="speedV" class="value">3</span>
+        </div>
+
+        <p class="muted">
+            Read in order. Panel 1: a Cahn-Hilliard territory of
+            ±1 domains — same substrate from R12/R15/R16, here
+            used as a height function. Panel 2: the magnitude of
+            its gradient, peaking on walls (this also <em>is</em>
+            the local fluid speed). Panel 3: the sign of v<sub>x</sub>,
+            so you can see the wall flow has a definite direction
+            (red right, blue left). Panel 4: a dye field
+            transported by that velocity. The stripes warp along
+            the walls instead of crossing them.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (territory)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">mean speed</span> <span class="v" id="rSp">0.000</span></div>
+            <div><span class="k">dye mass</span> <span class="v" id="rMass">0.000</span></div>
+            <div><span class="k">dye variance</span> <span class="v" id="rVar">0.000</span></div>
+            <div><span class="k">var / var₀</span> <span class="v" id="rVarF">0%</span></div>
+            <div><span class="k">regime</span> <span class="v" id="rRegime">cold</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            R10–R16 added gating operators: read a field, gate
+            another field. R17 adds the first <em>transport</em>
+            operator. The dye doesn't react, doesn't lock — it
+            moves. <code>advect_by</code> takes a scalar and a
+            velocity, and traces back where each cell came from a
+            moment ago (semi-Lagrangian). It is the operator that
+            makes the kit able to <em>circulate</em> things.
+        </p>
+
+        <p>
+            The composition is light on its feet. The territory is
+            the same one we've been using. <code>gradient_field</code>
+            is the vector cousin of <code>gradient_magnitude</code>
+            from R16. Rotating that gradient by 90° (swap the
+            components, flip one sign) turns φ into a stream
+            function: the velocity is divergence-free by
+            construction. The dye therefore can't pile up — it
+            slides along level sets of φ. The wall network — the
+            same network R16 used to route Kuramoto coupling —
+            is now read as a river network.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> Watch the first ~60
+                steps. The horizontal dye stripes warp at every
+                wall and start to follow them. Each domain becomes
+                a closed loop the dye circulates inside.
+            </li>
+            <li>
+                <strong>Velocity scale → 0.</strong> Flow stops.
+                Dye freezes in place. Confirms the transport is
+                doing all the work.
+            </li>
+            <li>
+                <strong>Velocity scale up.</strong> Streamline
+                topology unchanged — same level sets — but dye
+                follows them faster. Variance erodes faster too:
+                semi-Lagrangian dissipates.
+            </li>
+            <li>
+                <strong>Reseed dye (vertical).</strong> Different
+                initial stripes, same flow field. They warp into
+                the same wall network, just from a different
+                starting angle. The territory imposes the geometry.
+            </li>
+            <li>
+                <strong>New territory.</strong> Same operators,
+                fresh CH initial condition. A new river network
+                redraws itself; dye finds it.
+            </li>
+            <li>
+                <strong>Watch long-term.</strong> After ~500 steps
+                the dye is mostly mean. Bilinear semi-Lagrangian
+                is dissipative — the streamline topology is
+                preserved but features get smoothed. Reseed to
+                see the transient again.
+            </li>
+        </ol>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>Dye respects walls.</strong> Compare panel
+                4 to panel 1: dye boundaries align with φ contours,
+                not across them. Walls are stream lines, not
+                barriers in the gating sense — they're carrying
+                things.
+            </li>
+            <li>
+                <strong>Mass stays near 1.</strong> The readout
+                "dye mass" stays within a few percent of its
+                initial value. Stream-function velocity is
+                incompressible by construction; semi-Lagrangian
+                drifts a little but doesn't blow up.
+            </li>
+            <li>
+                <strong>Variance decays.</strong> The "var / var₀"
+                number falls over time. That's the cost of
+                bilinear semi-Lagrangian: no diffusion in the PDE,
+                but the numerical scheme adds some. The
+                <em>topology</em> of the dye flow is honest; the
+                <em>contrast</em> erodes.
+            </li>
+            <li>
+                <strong>R12 / R16 / R17 trio.</strong> All three
+                use the same Cahn-Hilliard territory. R12 made the
+                bulk into sync. R16 made the walls into sync. R17
+                makes the walls into a flow. Three different
+                downstream operators, three different roles for
+                the same upstream geometry.
+            </li>
+        </ul>
+
+        <h2>why this rung matters</h2>
+        <p>
+            With <code>advect_by</code> on the kit, the operator
+            alphabet finally has a <em>transport</em> category.
+            Until now everything was reaction-like: a substrate
+            evolved in place; an operator gated or read it; a
+            second substrate evolved in place. R17 adds the
+            ability to move state through space. That is the
+            piece you need for fluids, traffic, signal flow,
+            anything where information has to physically travel.
+        </p>
+
+        <p>
+            Operator alphabet now has 6 ops in 4 categories:
+            read-by-threshold (<code>excitable_gate</code>),
+            read-by-peak (<code>phase_to_scalar_field</code>),
+            read-by-magnitude (<code>bulk_gate</code>),
+            differentiate-scalar (<code>gradient_magnitude</code>),
+            differentiate-vector (<code>gradient_field</code>),
+            transport (<code>advect_by</code>).
+        </p>
+
+        <p class="muted">
+            Math + code: <code>flow::CahnHilliard2D</code>,
+            <code>flow::gradient_field</code> (new),
+            <code>flow::advect_by</code> (new, semi-Lagrangian with
+            bilinear interpolation and periodic wrap).
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>
