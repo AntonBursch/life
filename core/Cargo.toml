@@ -29,6 +29,7 @@ members = [
     "r25-homeostasis",
     "r26-self-bounding",
     "r27-latched-death",
+    "r28-communication",
     "server",
     "flow-wasm",
 ]

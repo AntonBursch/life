@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R28 — Communication · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .quad {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .quad figure { margin: 0; }
+            .quad canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .quad figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 1000px) {
+                .quad { grid-template-columns: repeat(2, 1fr); }
+            }
+            @media (max-width: 520px) {
+                .quad { grid-template-columns: 1fr; }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r27-latched-death/">← R27</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R28 — Communication</h1>
+        <p class="muted">
+            Phase D, second rung. <em>No new operator.</em> R28
+            is built entirely out of pieces we already have:
+            <code>latch_field</code> composed with
+            <code>advect_by</code> composed with
+            <code>latch_field</code>. Each cell maintains a local
+            latch (R27's wall_state) <em>and</em> a transmitted
+            latch whose state is the advected, accumulated shadow
+            of every local latch upstream. The wave's ε is
+            modulated by the <strong>transmitted</strong> field,
+            not the local one. So each cell experiences walls
+            that originated some time ago at position
+            <em>x &minus; v·t</em>. Walls travel without their
+            builder. That is the minimum signature of a
+            communication channel.
+        </p>
+
+        <div class="quad">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>1 · u (live wave)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="memCanvas"></canvas>
+                <figcaption>2 · memory (leaky ∫u)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="wallLocalCanvas"></canvas>
+                <figcaption>3 · wall_local (latched here)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="transmittedCanvas"></canvas>
+                <figcaption>4 · transmitted (arrived from upstream →)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reseed">↻ Reseed spiral (left)</button>
+            <button id="killWave">☠ Kill wave</button>
+            <button id="healWalls">↻ Clear walls</button>
+            <button id="sparkLeft">⚡ Spark left</button>
+            <button id="sparkRight">⚡ Spark right</button>
+        </div>
+
+        <div class="controls">
+            <label for="velocity">channel velocity (cells / t.u., rightward)</label>
+            <input id="velocity" type="range" min="0.0" max="5.0" value="0.5" step="0.1" />
+            <span id="velocityV" class="value">0.5</span>
+
+            <label for="setThr">set threshold (local latch on)</label>
+            <input id="setThr" type="range" min="0.2" max="3.0" value="1.0" step="0.05" />
+            <span id="setThrV" class="value">1.00</span>
+
+            <label for="resetThr">reset threshold (local latch off)</label>
+            <input id="resetThr" type="range" min="0.0" max="2.0" value="0.0" step="0.05" />
+            <span id="resetThrV" class="value">0.00</span>
+
+            <label for="killEps">wall ε (kill_eps)</label>
+            <input id="killEps" type="range" min="0.025" max="0.30" value="0.04" step="0.005" />
+            <span id="killEpsV" class="value">0.040</span>
+
+            <label for="leak">memory leak (1/τ)</label>
+            <input id="leak" type="range" min="0.05" max="2.0" value="0.50" step="0.05" />
+            <span id="leakV" class="value">0.50</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="16" value="6" step="1" />
+            <span id="speedV" class="value">6</span>
+        </div>
+
+        <p class="muted">
+            Panel 3 shows where the wave has actually been long
+            enough to commit a local wall. Panel 4 shows what has
+            <em>arrived</em>: every local commitment, advected
+            rightward at v cells per time unit, deposited
+            permanently along its path. The eps field that the
+            wave actually experiences is panel 4, not panel 3.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (tissue)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">excited frac</span> <span class="v" id="rEx">0.000</span></div>
+            <div><span class="k">wall_local</span> <span class="v" id="rWl">0.0%</span></div>
+            <div><span class="k">transmitted</span> <span class="v" id="rTr">0.0%</span></div>
+            <div><span class="k">wall_local (right ½)</span> <span class="v" id="rWlR">0.0%</span></div>
+            <div><span class="k">transmitted (right ½)</span> <span class="v" id="rTrR">0.0%</span></div>
+            <div><span class="k">&lt;memory&gt;</span> <span class="v" id="rMm">0.000</span></div>
+            <div><span class="k">&lt;ε&gt;</span> <span class="v" id="rEm">0.020</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            <em>Information can travel without mass.</em> R6
+            (advect_by) moves a scalar through space; R27
+            (latch_field) makes a state irreversibly committed.
+            Compose them in this order — <code>latch</code>,
+            then <code>advect</code>, then <code>latch</code>
+            again — and the second latch becomes a permanent
+            record of upstream commitments. The medium has not
+            moved; the wave has not crossed; yet the right half
+            of the grid is full of walls whose only origin is a
+            spiral on the left. Same alphabet, no new operator,
+            qualitatively new behaviour: a channel.
+        </p>
+        <p>
+            CLI verified, 128×96, v=2.5 cells/t.u., dt=0.02. At
+            tissue time 30, the right half shows
+            wall_local = 7.1% but transmitted = 100%. The 93%
+            gap is everything the channel has delivered that the
+            medium itself has not yet built. Kill the wave at
+            t=60 and the channel keeps delivering: transmitted
+            stays at 100% in the right half indefinitely. The
+            spiral is dead; its words are still arriving.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> A spiral on the left
+                builds wall_local in its footprint. Watch
+                panel 4: a slow curtain of transmitted walls
+                drifts rightward at velocity 0.5 cells/t.u.
+                The wave on the left starts seeing its own
+                walls coming back at it from the right.
+            </li>
+            <li>
+                <strong>Kill wave.</strong> wall_local stops
+                growing. transmitted keeps marching. The dead
+                spiral's prior commitments continue to arrive
+                downstream.
+            </li>
+            <li>
+                <strong>Spark right.</strong> After letting the
+                channel run, kill the wave and spark a fresh
+                spiral on the right. It is born inside walls it
+                did not build — walls that arrived as messages
+                from a spiral that no longer exists.
+            </li>
+            <li>
+                <strong>Velocity = 0.</strong> Disables the
+                channel. The transmitted field is now just a
+                second copy of wall_local — no transport, no
+                communication. Confirm: the right half stays
+                empty.
+            </li>
+            <li>
+                <strong>Velocity = 5.0.</strong> The channel
+                floods the whole grid in seconds. The wave gets
+                ε-killed everywhere within ~30 t.u. — the
+                message arrives faster than the system can
+                contain it. Communication has bandwidth, and
+                turning it up has consequences.
+            </li>
+            <li>
+                <strong>Clear walls.</strong> Wipes memory,
+                wall_local, and transmitted. The only way to
+                silence the channel is from outside the
+                substrate.
+            </li>
+        </ol>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

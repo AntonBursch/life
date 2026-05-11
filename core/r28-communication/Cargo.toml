@@ -1,0 +1,11 @@
+[package]
+name = "r28-communication"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "r28-communication"
+path = "src/main.rs"
+
+[dependencies]
+flow = { path = "../flow" }
