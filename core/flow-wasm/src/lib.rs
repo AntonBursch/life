@@ -4,7 +4,7 @@
 //! JS/Rust interop and exposes the diffusion field in a form a Canvas
 //! renderer can consume cheaply.
 
-use flow::{excitable_gate, phase_to_scalar_field, bulk_gate, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
+use flow::{excitable_gate, phase_to_scalar_field, bulk_gate, gradient_magnitude, AdvectionDiffusion1D, Barkley2D, BoundaryCondition, CahnHilliard2D, Convection2D, Diffusion1D, GrayScott2D, Kuramoto2D, SwiftHohenberg2D};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -1691,3 +1691,176 @@ impl WasmCoupledR15 {
 
 
 
+
+
+// =====================================================================
+// R16: walls route sync. Same substrate pair as R12 (Cahn-Hilliard +
+// Kuramoto) but routed through the new operator `gradient_magnitude`
+// instead of `bulk_gate`. R12 syncs in the +/-1 bulk regions; R16
+// syncs on the walls. The operator inverts which spatial feature is
+// the synced backbone.
+//
+// First use of gradient_magnitude. Operator alphabet category:
+// "differentiate" -- expose boundaries rather than bulk.
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR16 {
+    territory: CahnHilliard2D,
+    phase: Kuramoto2D,
+    grad: Vec<f64>,
+    k_field: Vec<f64>,
+    k_bulk: f64,
+    k_wall: f64,
+    grad_ref: f64,
+    sharp: f64,
+    width: usize,
+    height: usize,
+    dx: f64,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR16 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        // Cahn-Hilliard
+        mobility: f64,
+        kappa: f64,
+        ch_dx: f64,
+        ch_dt: f64,
+        // Kuramoto
+        ph_dt: f64,
+        // remap: smoothstep gate around grad_ref +/- sharp
+        k_bulk: f64,
+        k_wall: f64,
+        grad_ref: f64,
+        sharp: f64,
+    ) -> Result<WasmCoupledR16, JsError> {
+        let territory = CahnHilliard2D::new(width, height, mobility, kappa, ch_dx, ch_dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let phase = Kuramoto2D::new(width, height, 0.0, ph_dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let n = width * height;
+        Ok(Self {
+            territory, phase,
+            grad: vec![0.0; n],
+            k_field: vec![k_bulk; n],
+            k_bulk, k_wall,
+            grad_ref: if grad_ref > 0.0 { grad_ref } else { 1.0 },
+            sharp: if sharp > 0.0 { sharp } else { 0.1 },
+            width, height, dx: ch_dx,
+        })
+    }
+
+    pub fn step(&mut self) {
+        self.territory.step();
+        let _ = gradient_magnitude(
+            self.territory.c(),
+            self.width, self.height, self.dx,
+            &mut self.grad,
+        );
+        let span = self.k_wall - self.k_bulk;
+        let edge0 = self.grad_ref - self.sharp;
+        let edge1 = self.grad_ref + self.sharp;
+        let inv = if edge1 > edge0 { 1.0 / (edge1 - edge0) } else { 0.0 };
+        for (g, kk) in self.grad.iter().zip(self.k_field.iter_mut()) {
+            let t = ((*g - edge0) * inv).clamp(0.0, 1.0);
+            let s = t * t * (3.0 - 2.0 * t);
+            *kk = self.k_bulk + span * s;
+        }
+        let _ = self.phase.step_with_coupling_field(&self.k_field);
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_territory(&mut self, amplitude: f64, mean: f64, seed: u32) {
+        self.territory.seed_noise(amplitude, mean, seed as u64);
+    }
+    pub fn reset_territory(&mut self) {
+        self.territory.reset();
+    }
+    pub fn pre_evolve_territory(&mut self, n: u32) {
+        for _ in 0..n { self.territory.step(); }
+    }
+    pub fn set_natural_frequencies(&mut self, sigma: f64, seed: u32) {
+        self.phase.set_natural_frequencies(sigma, seed as u64);
+    }
+    pub fn randomise_phases(&mut self, seed: u32) {
+        self.phase.randomise_phases(seed as u64);
+    }
+
+    pub fn set_k_bulk(&mut self, v: f64) { if v >= 0.0 { self.k_bulk = v; } }
+    pub fn set_k_wall(&mut self, v: f64) { if v >= 0.0 { self.k_wall = v; } }
+    pub fn set_grad_ref(&mut self, v: f64) { if v > 0.0 { self.grad_ref = v; } }
+    pub fn set_sharp(&mut self, v: f64) { if v > 0.0 { self.sharp = v; } }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.width }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.height }
+    #[wasm_bindgen(getter)]
+    pub fn territory_time(&self) -> f64 { self.territory.time() }
+    #[wasm_bindgen(getter)]
+    pub fn phase_time(&self) -> f64 { self.phase.time() }
+    #[wasm_bindgen(getter)]
+    pub fn order_parameter(&self) -> f64 { self.phase.order_parameter() }
+
+    pub fn mean_grad(&self) -> f64 {
+        if self.grad.is_empty() { return 0.0; }
+        self.grad.iter().sum::<f64>() / self.grad.len() as f64
+    }
+
+    pub fn wall_coverage(&self) -> f64 {
+        let thresh = 0.5 * self.grad_ref;
+        let n = self.grad.iter().filter(|g| **g > thresh).count();
+        n as f64 / self.grad.len() as f64
+    }
+
+    /// Order parameter restricted to wall cells (|g| > 0.5*grad_ref).
+    pub fn order_parameter_on_walls(&self) -> f64 {
+        let thresh = 0.5 * self.grad_ref;
+        let theta = self.phase.theta();
+        let (mut c, mut s, mut n) = (0.0_f64, 0.0_f64, 0_usize);
+        for (gi, ti) in self.grad.iter().zip(theta.iter()) {
+            if *gi > thresh { c += ti.cos(); s += ti.sin(); n += 1; }
+        }
+        if n == 0 { 0.0 } else { (c * c + s * s).sqrt() / n as f64 }
+    }
+
+    pub fn order_parameter_in_bulk(&self) -> f64 {
+        let thresh = 0.5 * self.grad_ref;
+        let theta = self.phase.theta();
+        let (mut c, mut s, mut n) = (0.0_f64, 0.0_f64, 0_usize);
+        for (gi, ti) in self.grad.iter().zip(theta.iter()) {
+            if *gi <= thresh { c += ti.cos(); s += ti.sin(); n += 1; }
+        }
+        if n == 0 { 0.0 } else { (c * c + s * s).sqrt() / n as f64 }
+    }
+
+    pub fn local_correlation(&self) -> f64 {
+        let w = self.phase.width();
+        let h = self.phase.height();
+        let theta = self.phase.theta();
+        let mut acc = 0.0;
+        let mut cnt = 0_usize;
+        for j in 0..h {
+            let jp = if j == h - 1 { 0 } else { j + 1 };
+            for i in 0..w {
+                let ip = if i == w - 1 { 0 } else { i + 1 };
+                let t0 = theta[j * w + i];
+                acc += (theta[j * w + ip] - t0).cos();
+                acc += (theta[jp * w + i] - t0).cos();
+                cnt += 2;
+            }
+        }
+        if cnt == 0 { 0.0 } else { acc / cnt as f64 }
+    }
+
+    pub fn phi_field(&self) -> Vec<f64> { self.territory.c().to_vec() }
+    pub fn grad_field(&self) -> Vec<f64> { self.grad.clone() }
+    pub fn k_coupling_field(&self) -> Vec<f64> { self.k_field.clone() }
+    pub fn theta_field(&self) -> Vec<f64> { self.phase.theta().to_vec() }
+}

@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R16 — Walls route sync · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .quad {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .quad figure { margin: 0; }
+            .quad canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .quad figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .quad { grid-template-columns: repeat(2, 1fr); }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r15-stripes-route-sync/">← R15</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R16 — Walls route sync</h1>
+        <p class="muted">
+            Seventh composition. New operator
+            <code>gradient_magnitude</code>: read where boundaries
+            are, not where bulk is. Same substrate pair as R12
+            (Cahn-Hilliard + Kuramoto) but routed through the new
+            operator instead of <code>bulk_gate</code>. R12 syncs
+            inside the ±1 bulk regions; R16 syncs on the walls
+            between them. Operator alphabet now has its
+            "differentiate" category.
+        </p>
+
+        <div class="quad">
+            <figure>
+                <canvas id="phiCanvas"></canvas>
+                <figcaption>1 · Territory φ (R8)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="gradCanvas"></canvas>
+                <figcaption>2 · |∇φ| (new operator)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="kCanvas"></canvas>
+                <figcaption>3 · Coupling K = gate(|∇φ|)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="phaseCanvas"></canvas>
+                <figcaption>4 · Phase θ (R9)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="reterritory">↻ New territory</button>
+            <button id="reseedPhases">↻ Reseed phases</button>
+        </div>
+
+        <div class="controls">
+            <label for="kwall">wall coupling K<sub>wall</sub></label>
+            <input id="kwall" type="range" min="0" max="14" value="10" step="0.1" />
+            <span id="kwallV" class="value">10.0</span>
+
+            <label for="kbulk">bulk coupling K<sub>bulk</sub></label>
+            <input id="kbulk" type="range" min="0" max="2" value="0.0" step="0.05" />
+            <span id="kbulkV" class="value">0.00</span>
+
+            <label for="gref">grad threshold |∇φ|<sub>0</sub></label>
+            <input id="gref" type="range" min="0.1" max="1.2" value="0.5" step="0.01" />
+            <span id="grefV" class="value">0.50</span>
+
+            <label for="sharp">gate sharpness</label>
+            <input id="sharp" type="range" min="0.05" max="0.5" value="0.15" step="0.01" />
+            <span id="sharpV" class="value">0.15</span>
+
+            <label for="sigma">freq spread σ</label>
+            <input id="sigma" type="range" min="0" max="0.4" value="0.1" step="0.01" />
+            <span id="sigmaV" class="value">0.10</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="12" value="3" step="1" />
+            <span id="speedV" class="value">3</span>
+        </div>
+
+        <p class="muted">
+            Read left to right. Panel 1 phase-separates into
+            ±1 bulk regions. Panel 2 is <em>not</em> the bulk —
+            it's the spatial derivative, sharp on the walls and
+            zero in the bulk. Panel 3 gates panel 2: walls become
+            high-K rails, bulk is at K≈0. Panel 4 locks along the
+            wall network and drifts in the bulk.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (territory)</span> <span class="v" id="rTt">0</span></div>
+            <div><span class="k">t (phase)</span> <span class="v" id="rTp">0</span></div>
+            <div><span class="k">wall coverage</span> <span class="v" id="rWall">0%</span></div>
+            <div><span class="k">r on walls</span> <span class="v" id="rRw">0.000</span></div>
+            <div><span class="k">r in bulk</span> <span class="v" id="rRb">0.000</span></div>
+            <div><span class="k">r global</span> <span class="v" id="rR">0.000</span></div>
+            <div><span class="k">local corr</span> <span class="v" id="rLoc">+0.000</span></div>
+            <div><span class="k">regime</span> <span class="v" id="rRegime">cold</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            R12 took the same Cahn-Hilliard territory and used
+            <code>bulk_gate</code> to make the ±1 interiors of the
+            domains into sync islands; the walls between them stayed
+            incoherent. R16 holds the substrates fixed and swaps
+            one operator. <code>gradient_magnitude</code> reads the
+            same φ and exposes its derivatives — i.e., the walls.
+            The downstream Kuramoto layer doesn't know it. It
+            simply locks wherever K is high. The wall network of
+            R12 has become the sync backbone of R16.
+        </p>
+
+        <p>
+            Concretely: this is the first time the alphabet ships
+            an operator whose job is to <em>differentiate</em>.
+            All previous operators (<code>excitable_gate</code>,
+            <code>phase_to_scalar_field</code>,
+            <code>bulk_gate</code>) read field <em>values</em>.
+            <code>gradient_magnitude</code> reads field
+            <em>changes</em>. That is a new primitive on the kit.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> Wait ~20s. Panel 1 forms
+                ±1 blobs. Panel 2 traces the blob outlines. Panel 3
+                gates them into bright wall rails. Panel 4 develops
+                bright bands of phase along those rails; the
+                interior of each blob stays scrambled.
+            </li>
+            <li>
+                <strong>K<sub>wall</sub> → 0.</strong> No coupling
+                anywhere. Phase canvas returns to rainbow noise.
+                Walls are still drawn upstream, nothing reads them.
+            </li>
+            <li>
+                <strong>K<sub>bulk</sub> → 1.</strong> Bulk also
+                couples. The wall vs bulk distinction in panel 4
+                fades. r<sub>walls</sub> and r<sub>bulk</sub>
+                converge.
+            </li>
+            <li>
+                <strong>|∇φ|<sub>0</sub> high.</strong> Only the
+                sharpest walls trigger coupling. Panel 3 dims to a
+                thin network; panel 4 locks only along the sharpest
+                ridges.
+            </li>
+            <li>
+                <strong>|∇φ|<sub>0</sub> low.</strong> Almost every
+                cell counts as "wall." K is uniformly high; phase
+                locks globally; the geometric signature is lost.
+            </li>
+            <li>
+                <strong>σ large.</strong> Strong detuning. Bulk
+                cells, with K=0, drift wildly. Walls, with high K,
+                still beat σ and lock. The wall/bulk contrast in
+                panel 4 sharpens.
+            </li>
+            <li>
+                <strong>New territory.</strong> Same operators,
+                fresh CH initial condition. The whole sync backbone
+                redraws itself around the new wall network.
+            </li>
+        </ol>
+
+        <h2>what to look for</h2>
+        <ul>
+            <li>
+                <strong>Phase rides the walls.</strong> Compare
+                panels 2 and 4: bright bands in 4 match bright
+                rails in 2. Sync follows differentiated geometry.
+            </li>
+            <li>
+                <strong>Inverted R12.</strong> If you remember R12:
+                bulk locked, walls were quiet. Here it's the
+                opposite. Same upstream, same downstream, different
+                operator -- different geometry. That is exactly
+                what a clean operator alphabet should buy you.
+            </li>
+            <li>
+                <strong>r<sub>walls</sub> vs r<sub>bulk</sub>.</strong>
+                The headline number. Within wall cells, phases
+                align. Within bulk cells, they don't. Global r is
+                low because the wall network forms several locked
+                clusters with different mean phases.
+            </li>
+            <li>
+                <strong>Coarsening shrinks the backbone.</strong>
+                As CH coarsens, wall length goes down. Panel 4's
+                lit network thins. Sync structure follows the slow
+                substrate's geometry in real time.
+            </li>
+        </ul>
+
+        <h2>why this rung matters</h2>
+        <p>
+            R10–R15 each added a composition. R16 adds an
+            <em>operator</em>. The operator alphabet so far had
+            three "read" primitives (gate by threshold, by phase
+            peak, by absolute magnitude). It now has its first
+            "differentiate" primitive. This is what unlocks
+            phenomena like <em>walls drive things</em>, <em>edges
+            drive things</em>, <em>flux drives things</em> -- all
+            of which need spatial derivatives to even be
+            expressible.
+        </p>
+
+        <p class="muted">
+            Math + code: <code>flow::CahnHilliard2D</code>,
+            <code>flow::Kuramoto2D::step_with_coupling_field</code>,
+            wired with the new <code>flow::gradient_magnitude</code>.
+        </p>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>

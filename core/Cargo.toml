@@ -17,6 +17,7 @@ members = [
     "r13-spikes-seed-pattern",
     "r14-three-layer-stack",
     "r15-stripes-route-sync",
+    "r16-walls-route-sync",
     "server",
     "flow-wasm",
 ]

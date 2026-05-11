@@ -153,6 +153,51 @@ pub fn bulk_gate(
     Ok(())
 }
 
+/// Compute the magnitude of the spatial gradient of a scalar field
+/// `phi` on a periodic `width x height` grid, written into `out`.
+/// Uses centred differences with grid spacing `dx > 0`. The result
+/// is `sqrt((dphi/dx)^2 + (dphi/dy)^2)` per cell.
+///
+/// This is the "differentiate" primitive of the operator alphabet:
+/// it turns *where the bulk lives* into *where the boundaries
+/// are*. Combined with downstream maps (linear, threshold, gate)
+/// it lets edges drive downstream substrates -- walls of a
+/// territory become rails of a chemistry, gradient flux becomes a
+/// feed.
+pub fn gradient_magnitude(
+    phi: &[f64],
+    width: usize,
+    height: usize,
+    dx: f64,
+    out: &mut [f64],
+) -> Result<(), CouplingError> {
+    if phi.len() != out.len() {
+        return Err(CouplingError::SizeMismatch);
+    }
+    if phi.len() != width * height {
+        return Err(CouplingError::SizeMismatch);
+    }
+    if !(dx > 0.0) {
+        return Err(CouplingError::BadParam { name: "dx", value: dx });
+    }
+    let inv_2dx = 0.5 / dx;
+    for j in 0..height {
+        let jn = if j == 0 { height - 1 } else { j - 1 };
+        let js = if j + 1 == height { 0 } else { j + 1 };
+        let row = j * width;
+        let row_n = jn * width;
+        let row_s = js * width;
+        for i in 0..width {
+            let iw = if i == 0 { width - 1 } else { i - 1 };
+            let ie = if i + 1 == width { 0 } else { i + 1 };
+            let gx = (phi[row + ie] - phi[row + iw]) * inv_2dx;
+            let gy = (phi[row_s + i] - phi[row_n + i]) * inv_2dx;
+            out[row + i] = (gx * gx + gy * gy).sqrt();
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -319,5 +364,55 @@ mod tests {
             "gate failed to drive local sync: r_in={} r_out={}",
             r_in, r_out
         );
+    }
+
+    #[test]
+    fn gradient_magnitude_flat_is_zero() {
+        let w = 8;
+        let h = 8;
+        let phi = vec![0.7_f64; w * h];
+        let mut out = vec![1.0_f64; w * h];
+        gradient_magnitude(&phi, w, h, 1.0, &mut out).unwrap();
+        for v in &out {
+            assert!(v.abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn gradient_magnitude_linear_ramp() {
+        // phi[i,j] = i  -> dphi/dx = 1, dphi/dy = 0, |grad| = 1
+        // everywhere except where the periodic wrap kicks in.
+        let w = 16;
+        let h = 4;
+        let mut phi = vec![0.0_f64; w * h];
+        for j in 0..h {
+            for i in 0..w {
+                phi[j * w + i] = i as f64;
+            }
+        }
+        let mut out = vec![0.0_f64; w * h];
+        gradient_magnitude(&phi, w, h, 1.0, &mut out).unwrap();
+        // Interior columns should read |grad| ~= 1.
+        for j in 0..h {
+            for i in 1..w - 1 {
+                let g = out[j * w + i];
+                assert!((g - 1.0).abs() < 1e-12, "g={} at ({},{})", g, i, j);
+            }
+        }
+    }
+
+    #[test]
+    fn gradient_magnitude_rejects_bad_inputs() {
+        let phi = vec![0.0; 9];
+        let mut out = vec![0.0; 8];
+        assert_eq!(
+            gradient_magnitude(&phi, 3, 3, 1.0, &mut out),
+            Err(CouplingError::SizeMismatch)
+        );
+        let mut out2 = vec![0.0; 9];
+        assert!(matches!(
+            gradient_magnitude(&phi, 3, 3, 0.0, &mut out2).unwrap_err(),
+            CouplingError::BadParam { name: "dx", .. }
+        ));
     }
 }
