@@ -1,0 +1,12 @@
+[package]
+name = "r30-enclosure"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "r30-enclosure"
+path = "src/main.rs"
+
+[dependencies]
+flow = { path = "../flow" }

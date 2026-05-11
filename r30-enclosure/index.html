@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R30 — Enclosure · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .quad {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .quad figure { margin: 0; }
+            .quad canvas {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            .quad figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .quad { grid-template-columns: repeat(1, 1fr); }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r29prime-bistable-convergence/">← R29′</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <aside style="border-left:3px solid #2c7a3d;background:#152a1c;padding:10px 14px;margin:12px 0;color:#c0e8c8;">
+            <strong>First substrate-honest enclosure.</strong> A
+            closed boundary made of a real chemical species, held
+            together by a continuous downhill flow of fuel. Same
+            alphabet as R29′ — no new operator. Two coupled
+            species (X, B) plus the wave; the boundary persists
+            only as long as the fuel keeps flowing. Cut the
+            supply and the wall drains. See
+            <a href="../THESIS.md" style="color:#a0e6a8;">THESIS.md</a>.
+        </aside>
+
+        <h1>R30 — Enclosure</h1>
+        <p class="muted">
+            Phase E, fourth rung. R27′ established real chemistry.
+            R28′ showed it can be transported. R29′ showed it can
+            converge. R30 closes the loop: a self-maintained
+            boundary that contains a wave inside it, paid for by
+            an open-system fuel flow.
+        </p>
+
+        <p>
+            <strong>The setup.</strong> Two species fields on top
+            of the Barkley wave: <em>X</em> (Schlögl bistable) and
+            <em>B</em> (fuel). The Schlögl rate uses local
+            <em>B</em> in place of the constant reservoir term, so
+            the chemistry is bistable only where B is high enough
+            (<em>k4·B ≳ 5.5</em>). B is clamped to a supply value
+            at the grid boundary (the open-system "outside"),
+            decays at a first-order rate everywhere (the downhill
+            paid in chemical work), and is carried inward by a
+            radial-inward velocity field via <code>advect_by</code>.
+            Steady state: B is high in a ring at the edge, deeply
+            depleted in the core.
+        </p>
+
+        <p>
+            <strong>What you should see.</strong> X is seeded high
+            in a 6-cell ring at the boundary. In the ring, B is
+            saturated → Schlögl is bistable → X stays at its high
+            fixed point. In the core, B is depleted → Schlögl is
+            monostable at the low fp → X stays at 1. The high-X
+            ring drives ε high there, which kills the Barkley
+            wave: the spiral inside is enclosed. Now press
+            <strong>Cut supply</strong>: B at the edge drops to 0,
+            the inward flow carries the deficit through the ring,
+            the bistable's high fp disappears, and the wall
+            drains within ~50 t.u. The wave is no longer enclosed
+            because there is no longer anything to enclose it.
+        </p>
+
+        <div class="quad">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>1 · u (Barkley wave inside the wall)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="xCanvas"></canvas>
+                <figcaption>2 · X (Schlögl species — the wall is X=3)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="bCanvas"></canvas>
+                <figcaption>3 · B (fuel; supplied at edge, decays inward)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="epsCanvas"></canvas>
+                <figcaption>4 · ε (high in the wall — what enforces enclosure)</figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="cutSupply">⊘ Cut supply</button>
+            <button id="restoreSupply">⊕ Restore supply</button>
+            <button id="resetChem">↻ Reset wall + fuel</button>
+            <button id="resetWave">☠ Reset wave</button>
+            <button id="seedSpiral">↻ Seed new spiral</button>
+        </div>
+
+        <div class="controls">
+            <label for="supply">B supply (boundary concentration)</label>
+            <input id="supply" type="range" min="0.0" max="1.5" value="1.0" step="0.05" />
+            <span id="supplyV" class="value">1.00</span>
+
+            <label for="lambda">λ_B (fuel consumption rate)</label>
+            <input id="lambda" type="range" min="0.01" max="0.40" value="0.10" step="0.01" />
+            <span id="lambdaV" class="value">0.10</span>
+
+            <label for="vel">velocity |v| (cells / t.u., inward)</label>
+            <input id="vel" type="range" min="0.0" max="3.0" value="1.0" step="0.1" />
+            <span id="velV" class="value">1.0</span>
+
+            <label for="drive">drive D (u → X autocatalysis gain)</label>
+            <input id="drive" type="range" min="0.5" max="12.0" value="4.0" step="0.1" />
+            <span id="driveV" class="value">4.0</span>
+
+            <label for="killEps">wall ε (high-X ε ceiling)</label>
+            <input id="killEps" type="range" min="0.03" max="0.30" value="0.05" step="0.005" />
+            <span id="killEpsV" class="value">0.050</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="16" value="6" step="1" />
+            <span id="speedV" class="value">6</span>
+        </div>
+
+        <p class="muted">
+            Status: <strong id="supplyStatus">supply 1.00</strong>.
+            Move the supply slider to 0 to watch the wall drain. The
+            wave is enclosed as long as the ε of the wall stays
+            high; once the wall fails, the wave fills the grid.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (tissue)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">excited frac</span> <span class="v" id="rEx">0.000</span></div>
+            <div><span class="k">&lt;X&gt;</span> <span class="v" id="rXm">1.000</span></div>
+            <div><span class="k">wall (X &gt; 2, ring)</span> <span class="v" id="rRing">0.0%</span></div>
+            <div><span class="k">core (X &gt; 2, interior)</span> <span class="v" id="rCore">0.0%</span></div>
+            <div><span class="k">&lt;B&gt;</span> <span class="v" id="rBm">0.000</span></div>
+            <div><span class="k">&lt;ε&gt;</span> <span class="v" id="rEm">0.020</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            <em>Structure that pays for itself.</em> The boundary
+            is not painted onto the grid; it is a fixed point of a
+            real bistable reaction running on a real spatial fuel
+            field. B costs first-order decay everywhere; B is
+            supplied at the edge; the inflow rate has to equal the
+            consumption rate for the ring to stay above the
+            bistability threshold. While that balance holds, X
+            sits at its high fixed point in the ring on its own
+            (no comparator, no clamp on X). The moment B falls,
+            so does the wall.
+        </p>
+        <p>
+            <em>Enclosure is a consequence.</em> The wall raises ε
+            wherever X is high (via <code>modulate_parameter</code>,
+            the same coupling as R27′). High ε makes the Barkley
+            substrate non-excitable. A spiral seeded inside hits
+            the wall, dies at the boundary, and is reflected
+            inward. There is no explicit "wave kill zone"
+            anywhere — the kill zone is a side effect of the
+            chemistry's commitment.
+        </p>
+        <p>
+            CLI verified at default settings (128×128, |v|=1,
+            λ_B=0.1, B_supply=1.0, wall 6 cells thick):
+            <strong>supply on</strong>, steady state — wall
+            fraction <strong>18.2 %</strong> of ring cells,
+            <strong>0.0 %</strong> in the core,
+            ⟨B⟩ ≈ 0.32, core ⟨B⟩ ≈ 0.12, wave alive inside
+            (excited ≈ 0.21). <strong>Cut supply</strong> at
+            t = 160; by t = 180 wall fraction is 0.0 %; by t = 220
+            ⟨B⟩ ≈ 0. The wall does not persist without flow — the
+            honest "spends a downhill flow" property.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default.</strong> Watch the four panels.
+                The wall is the X=3 ring; B is brightest at the
+                edge and falls toward the centre; ε is bright
+                exactly where X is. The wave bounces inside.
+            </li>
+            <li>
+                <strong>Cut supply.</strong> Press the button or
+                drag the slider to 0. B drops at the edge, the
+                inward flow drags the deficit through the wall,
+                and the wall fades. Within a few seconds the wave
+                fills the grid.
+            </li>
+            <li>
+                <strong>Restore supply.</strong> Bring it back to
+                1. The fuel refills the ring. But X stays at the
+                low fp now — the wall does not rebuild itself
+                from nothing; bistability does not reseed without
+                a kick past the separatrix. Press
+                <strong>Reset wall + fuel</strong> to re-seed.
+            </li>
+            <li>
+                <strong>Raise λ_B.</strong> Consumption faster
+                than inflow → even the ring's B drops below
+                threshold → wall fails even with supply on. Fuel
+                economy matters.
+            </li>
+            <li>
+                <strong>Drop |v| to 0.</strong> No inward flow.
+                The supply only reaches the very outermost two
+                cells; the wall there might hold, but the inner
+                part of the seeded ring drains. The "membrane"
+                cannot extend deeper than the perfusion depth.
+            </li>
+        </ol>
+
+        <h2>what this rung is</h2>
+        <p>
+            R30 is the first life/ structure that is honest
+            enough for the ARC's rung 5 (autopoietic membrane).
+            It is not autopoiesis — the wall is not yet
+            self-assembling (we seed it). But it is a closed
+            spatial boundary made of real chemistry, maintained
+            by spending fuel that comes from outside, and it
+            visibly fails when the flow stops. The next rung is
+            to make the wall self-assemble from a single kick:
+            <em>autocatalysis at the rim</em> — that is R31's
+            problem.
+        </p>
+
+        <p class="muted">
+            Source:
+            <a href="https://github.com/AntonBursch/life">github.com/AntonBursch/life</a>.
+            Code MIT, prose CC-BY-4.0.
+        </p>
+
+        <script type="module" src="main.js"></script>
+    </body>
+</html>

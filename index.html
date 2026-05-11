@@ -241,6 +241,13 @@
                     >No new operator — same composition as R28′ (react then advect) with position-dependent velocity (left half flows right, right half flows left) and two source reservoirs holding the Schlögl species X clamped at X=3 (honest Dirichlet BC representing continuous metabolic supply). Streams from both sides meet at the midline; CLI 128×96 |v|=2 inward: while clamped, X_hi_mid ≈ 13.5% versus X_hi_L = X_hi_R = 9.1% — the midline commits ~50% higher than either flank because it receives convergent inflow from both directions. Release the clamp: advection drains committed cells faster than the Schlögl rate can hold them; by t=160 the entire grid is back at X=1. R29's "permanent midline record" was a <code>latch_field</code> artifact, not chemistry. Honest open systems require continuous supply — same act, opposite outcome, both substrate-honest</span
                 >
             </li>
+            <li>
+                <a href="r30-enclosure/">R30 — Enclosure</a> ·
+                <em class="muted" style="color:#2c7a3d;">[Phase E · first substrate-honest enclosure]</em> ·
+                <span class="muted"
+                    >No new operator — composition of <code>react_field</code> + <code>advect_by</code> + <code>modulate_parameter</code> applied to two coupled species fields (X, B) plus the wave. The Schlögl rate uses a SPATIAL fuel field B in place of the constant reservoir term: where B is high, the bistable’s X=3 fixed point exists; where B is low, only X=1 survives. B is Dirichlet-clamped at the grid edge (open boundary — the “outside”), advected inward by a 4-way radial velocity field, and consumed at first-order rate λ_B everywhere (the downhill that pays for the structure). CLI 128×128 (|v|=1, λ_B=0.1, wall 6 cells, B_supply=1): supply on — wall persists at 18.2% of ring cells, core fraction 0.0%, spiral enclosed inside (excited ≈ 0.21); supply cut at t=160 — by t=180 wall fraction is 0.0%, by t=220 ⟨B⟩ ≈ 0. The boundary is a real chemical structure paid for by a real fuel flow, and it visibly fails when the flow stops. First life/ structure honest enough for ARC rung 5</span
+                >
+            </li>
         </ul>
 
         <p class="muted">
