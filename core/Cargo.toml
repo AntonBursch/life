@@ -26,6 +26,7 @@ members = [
     "r22-memory-shapes-flow",
     "r23-excitable-courier",
     "r24-scar-tissue",
+    "r25-homeostasis",
     "server",
     "flow-wasm",
 ]

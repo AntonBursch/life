@@ -3097,3 +3097,172 @@ impl WasmCoupledR24 {
     pub fn memory_field(&self) -> Vec<f64> { self.memory.clone() }
     pub fn eps_field(&self) -> Vec<f64> { self.eps_field.clone() }
 }
+
+// =====================================================================
+// WasmCoupledR25 -- Homeostasis. Phase C, second rung.
+//
+// First *negative-feedback* control loop. Total Barkley activity
+// (excited_fraction) drives a single global eps offset to hold the
+// system at a chosen target activity. Reuses the parametrise idea
+// from R24 but as a scalar: one number controls the whole tissue.
+//
+// Control law (each step, after warmup):
+//   err        = excited_fraction(u) - target
+//   eps_offset = clamp((1 - leak*dt)*eps_offset + k*err*dt, 0, eps_max-base)
+//   sim.set_eps(base + eps_offset)
+//
+// More activity than target -> eps rises -> wave gets harder
+// to sustain -> activity falls. Less activity -> offset relaxes
+// back. Classic leaky integrator controller on a non-linear plant.
+// =====================================================================
+#[wasm_bindgen]
+pub struct WasmCoupledR25 {
+    tissue: Barkley2D,
+    base_eps: f64,
+    eps_offset: f64,
+    target: f64,
+    control_gain: f64,
+    control_leak: f64,
+    eps_max: f64,
+    dt_step: f64,
+    warmup_left: u32,
+    controller_on: bool,
+    width: usize,
+    height: usize,
+    // Rolling trace of (activity, eps_global) for the viewer plot.
+    trace_activity: Vec<f64>,
+    trace_eps: Vec<f64>,
+    trace_cap: usize,
+}
+
+#[wasm_bindgen]
+impl WasmCoupledR25 {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        width: usize,
+        height: usize,
+        diffusion: f64,
+        a: f64,
+        b: f64,
+        base_eps: f64,
+        dx: f64,
+        dt: f64,
+        target: f64,
+        control_gain: f64,
+        eps_max: f64,
+        warmup: u32,
+        trace_cap: usize,
+    ) -> Result<WasmCoupledR25, JsError> {
+        let tissue = Barkley2D::new(width, height, diffusion, a, b, base_eps, dx, dt)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(Self {
+            tissue,
+            base_eps,
+            eps_offset: 0.0,
+            target,
+            control_gain,
+            control_leak: 0.5,
+            eps_max,
+            dt_step: dt,
+            warmup_left: warmup,
+            controller_on: true,
+            width,
+            height,
+            trace_activity: Vec::with_capacity(trace_cap),
+            trace_eps: Vec::with_capacity(trace_cap),
+            trace_cap,
+        })
+    }
+
+    pub fn step(&mut self) {
+        let activity = self.tissue.excited_fraction();
+        let mut eps_global = self.base_eps + self.eps_offset;
+        if self.warmup_left > 0 {
+            self.warmup_left -= 1;
+        } else if self.controller_on {
+            let err = activity - self.target;
+            let proposed = (1.0 - self.control_leak * self.dt_step) * self.eps_offset
+                + self.control_gain * err * self.dt_step;
+            let max_off = (self.eps_max - self.base_eps).max(0.0);
+            self.eps_offset = proposed.max(0.0).min(max_off);
+            eps_global = self.base_eps + self.eps_offset;
+            self.tissue.set_eps(eps_global);
+        }
+        self.tissue.step();
+        // Record trace (sub-sample by always pushing -- caller can
+        // step_many at modest rates so the buffer is meaningful).
+        if self.trace_cap > 0 {
+            if self.trace_activity.len() >= self.trace_cap {
+                self.trace_activity.remove(0);
+                self.trace_eps.remove(0);
+            }
+            self.trace_activity.push(activity);
+            self.trace_eps.push(eps_global);
+        }
+    }
+
+    pub fn step_many(&mut self, n: u32) {
+        for _ in 0..n { self.step(); }
+    }
+
+    pub fn seed_spiral(&mut self) { self.tissue.seed_spiral(); }
+
+    pub fn kick(&mut self, cx: usize, cy: usize, radius: usize, amplitude: f64) {
+        self.tissue.kick(cx, cy, radius, amplitude);
+    }
+
+    pub fn reset_tissue(&mut self) {
+        self.tissue.reset();
+        self.eps_offset = 0.0;
+        self.tissue.set_eps(self.base_eps);
+        self.trace_activity.clear();
+        self.trace_eps.clear();
+    }
+    pub fn reset_controller(&mut self) {
+        self.eps_offset = 0.0;
+        self.tissue.set_eps(self.base_eps);
+    }
+    pub fn clear_trace(&mut self) {
+        self.trace_activity.clear();
+        self.trace_eps.clear();
+    }
+
+    pub fn set_target(&mut self, t: f64) { self.target = t; }
+    pub fn set_control_gain(&mut self, k: f64) { self.control_gain = k; }
+    pub fn set_control_leak(&mut self, l: f64) { self.control_leak = l.max(0.0); }
+    pub fn set_eps_max(&mut self, m: f64) { self.eps_max = m.max(self.base_eps); }
+    pub fn set_controller_on(&mut self, on: bool) {
+        self.controller_on = on;
+        if !on {
+            self.eps_offset = 0.0;
+            self.tissue.set_eps(self.base_eps);
+        }
+    }
+    pub fn set_a(&mut self, a: f64) { self.tissue.set_a(a); }
+    pub fn set_b(&mut self, b: f64) { self.tissue.set_b(b); }
+
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> usize { self.width }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> usize { self.height }
+    #[wasm_bindgen(getter)]
+    pub fn tissue_time(&self) -> f64 { self.tissue.time() }
+    #[wasm_bindgen(getter)]
+    pub fn warmup_remaining(&self) -> u32 { self.warmup_left }
+    #[wasm_bindgen(getter)]
+    pub fn controller_active(&self) -> bool { self.controller_on && self.warmup_left == 0 }
+
+    pub fn u_mean(&self) -> f64 {
+        let u = self.tissue.u();
+        u.iter().sum::<f64>() / u.len() as f64
+    }
+    pub fn excited_fraction(&self) -> f64 { self.tissue.excited_fraction() }
+    pub fn eps_global(&self) -> f64 { self.base_eps + self.eps_offset }
+    pub fn eps_offset(&self) -> f64 { self.eps_offset }
+    pub fn target(&self) -> f64 { self.target }
+    pub fn error(&self) -> f64 { self.tissue.excited_fraction() - self.target }
+
+    pub fn u_field(&self) -> Vec<f64> { self.tissue.u().to_vec() }
+    pub fn trace_activity(&self) -> Vec<f64> { self.trace_activity.clone() }
+    pub fn trace_eps(&self) -> Vec<f64> { self.trace_eps.clone() }
+}

@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>R25 — Homeostasis · life</title>
+        <link rel="stylesheet" href="../viewer/style.css" />
+        <style>
+            .duo {
+                display: grid;
+                grid-template-columns: 1fr 1.5fr;
+                gap: 10px;
+                margin: 12px 0;
+            }
+            .duo figure { margin: 0; }
+            .duo canvas {
+                width: 100%;
+                background: #000;
+                image-rendering: pixelated;
+            }
+            #uCanvas { aspect-ratio: 1 / 1; }
+            #traceCanvas { aspect-ratio: 2 / 1; image-rendering: auto; }
+            .duo figcaption {
+                font-size: 0.8em;
+                color: #888;
+                text-align: center;
+                margin-top: 4px;
+            }
+            @media (max-width: 800px) {
+                .duo { grid-template-columns: 1fr; }
+            }
+        </style>
+    </head>
+    <body>
+        <p class="muted">
+            <a href="../">life</a> ·
+            <a href="../r24-scar-tissue/">← R24</a> ·
+            <a href="https://github.com/AntonBursch/life">github</a>
+        </p>
+
+        <h1>R25 — Homeostasis</h1>
+        <p class="muted">
+            Phase C, second rung. First <strong>negative-feedback</strong>
+            control loop. R24 closed the loop spatially (local memory
+            sets local excitability). R25 closes it globally and
+            scalar: total Barkley activity drives a single ε
+            setpoint that pulls the system to a target activity
+            level. A leaky integrator controller —
+            <code>ε_offset ← (1−leak·dt)·ε_offset + k·(activity − target)·dt</code>
+            — on a non-linear plant (the spiral). Same parametrise
+            category as R24, no new operators.
+        </p>
+
+        <div class="duo">
+            <figure>
+                <canvas id="uCanvas"></canvas>
+                <figcaption>u (live wave under regulation)</figcaption>
+            </figure>
+            <figure>
+                <canvas id="traceCanvas"></canvas>
+                <figcaption>
+                    excited fraction <span style="color:#5cf">·</span>
+                    target <span style="color:#fa5">·</span>
+                    ε_global / ε_max <span style="color:#f55">·</span>
+                </figcaption>
+            </figure>
+        </div>
+
+        <div class="btnrow">
+            <button id="play">⏸ Pause</button>
+            <button id="ctrl">Controller: on</button>
+            <button id="reseed">↻ Reseed spiral</button>
+            <button id="kick">⚡ Kick</button>
+            <button id="clearTrace">↻ Clear trace</button>
+        </div>
+
+        <div class="controls">
+            <label for="target">target (excited frac)</label>
+            <input id="target" type="range" min="0.05" max="0.20" value="0.15" step="0.01" />
+            <span id="targetV" class="value">0.15</span>
+
+            <label for="gain">control gain k</label>
+            <input id="gain" type="range" min="0" max="3.0" value="1.0" step="0.05" />
+            <span id="gainV" class="value">1.00</span>
+
+            <label for="leak">control leak</label>
+            <input id="leak" type="range" min="0.05" max="2.0" value="0.50" step="0.05" />
+            <span id="leakV" class="value">0.50</span>
+
+            <label for="epsMax">ε ceiling</label>
+            <input id="epsMax" type="range" min="0.04" max="0.30" value="0.20" step="0.01" />
+            <span id="epsMaxV" class="value">0.20</span>
+
+            <label for="speed">steps / frame</label>
+            <input id="speed" type="range" min="0" max="16" value="6" step="1" />
+            <span id="speedV" class="value">6</span>
+        </div>
+
+        <p class="muted">
+            Toggle the controller off: the spiral runs at its
+            natural ~0.21 activity and the trace flatlines well
+            above target. Toggle back on: ε rises until activity
+            is dragged down to the dashed target line. Kick the
+            medium: activity spikes, then the controller answers
+            and pulls it back. That is the minimum signature of
+            homeostasis — a return-to-setpoint after a
+            perturbation.
+        </p>
+
+        <h2>readout</h2>
+        <div id="readout" class="readout">
+            <div><span class="k">t (tissue)</span> <span class="v" id="rT">0</span></div>
+            <div><span class="k">excited frac</span> <span class="v" id="rEx">0.000</span></div>
+            <div><span class="k">target</span> <span class="v" id="rTgt">0.150</span></div>
+            <div><span class="k">error</span> <span class="v" id="rErr">+0.000</span></div>
+            <div><span class="k">ε_global</span> <span class="v" id="rEps">0.020</span></div>
+            <div><span class="k">ε_offset</span> <span class="v" id="rOff">0.000</span></div>
+            <div><span class="k">&lt;u&gt;</span> <span class="v" id="rUm">0.000</span></div>
+            <div><span class="k">controller</span> <span class="v" id="rCtl">warmup…</span></div>
+        </div>
+
+        <div id="errSlot"></div>
+
+        <h2>the claim</h2>
+        <p>
+            <em>The system has a setpoint. Whatever you do to it,
+            the controller drags activity back to the target.</em>
+        </p>
+        <p>
+            R24 closed the loop in a way that always pushed the
+            system away from its natural state — more activity
+            made more scar, full stop. R25 is the first rung that
+            <em>regulates</em>. The error has a sign; the
+            controller pushes up or down to cancel it. A
+            disturbance (the kick button) becomes a transient,
+            not a permanent shift. The free-running natural
+            activity (~0.21) is no longer where the system lives
+            — it lives wherever you tell it to. Two-state
+            controller (offset + tissue), one knob (target). This
+            is what a thermostat does. It is also what a beating
+            heart does, what blood-pH does, what every closed
+            biological control loop does. From here, every
+            further rung will be about composing these loops, not
+            inventing them.
+        </p>
+
+        <h2>try this</h2>
+        <ol>
+            <li>
+                <strong>Default (target=0.15, k=1, controller on).</strong>
+                After warmup, ε rises to ~0.03–0.04 and activity
+                settles around 0.15. The two trace lines move in
+                opposite directions — more ε, less activity, in
+                gentle balance.
+            </li>
+            <li>
+                <strong>Toggle controller off.</strong> ε drops
+                to base; activity climbs to its natural ~0.21.
+                Open-loop steady state.
+            </li>
+            <li>
+                <strong>Kick under regulation.</strong> Activity
+                spikes; ε climbs in response; activity is dragged
+                back down within ~10–30 tissue-time units. The
+                return-to-setpoint <em>is</em> the homeostasis.
+            </li>
+            <li>
+                <strong>Change target to 0.18.</strong> Wave
+                relaxes back toward its natural state, ε falls.
+                Same controller, different setpoint, different
+                living point.
+            </li>
+            <li>
+                <strong>Drop target to 0.10.</strong> Right at
+                the edge — the controller can push activity
+                low, but if ε goes past the wave-extinction
+                threshold the spiral dies and cannot revive.
+                Low-target homeostasis is fragile; high-target
+                is easy. Real biology has the same asymmetry.
+            </li>
+            <li>
+                <strong>Gain = 0 with controller on.</strong>
+                Same as controller off — the leaky integrator
+                has nothing pushing it, so ε_offset stays at 0.
+            </li>
+        </ol>
+
+        <script type="module" src="./main.js"></script>
+    </body>
+</html>
